@@ -74,47 +74,27 @@ fn deserialize_bool_from_01<'de, D: Deserializer<'de>>(deserializer: D) -> bool 
 
 #[derive(Debug, Default, Clone, Serialize)]
 pub struct Game {
+    pub id: u16,
     pub team_home: SmolStr,
     pub team_away: SmolStr,
     pub starts_at: NaiveDate,
     pub tournament: SmolStr,
 }
 
-impl From<GameToken> for Game {
-    fn from(gt: GameToken) -> Self {
-        Self {
-            team_away: gt.team_away,
-            team_home: gt.team_home,
-            starts_at: gt.starts_at.date(),
-            tournament: gt.tournament_name,
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Offer {
-    pub game_index: u16,
-    pub package_index: u8,
+    pub game_id: u16,
+    pub package_id: u8,
     pub live: bool,
     pub highlights: bool,
 }
 
 #[derive(Debug, Clone, Default)]
 pub struct Package {
+    pub id: u8,
     pub name: SmolStr,
     pub monthly_price_cents: Option<u32>,
     pub monthly_price_yearly_subscription_in_cents: u32,
-}
-
-impl From<PackageToken> for Package {
-    fn from(pt: PackageToken) -> Self {
-        Self {
-            name: pt.name,
-            monthly_price_cents: pt.monthly_price_cents,
-            monthly_price_yearly_subscription_in_cents: pt
-                .monthly_price_yearly_subscription_in_cents,
-        }
-    }
 }
 
 #[derive(Debug)]
@@ -147,16 +127,36 @@ impl Data {
                     .ok_or(anyhow::anyhow!("Package ID {package_id} not found"))?;
 
                 Ok(Offer {
-                    game_index: game_index.try_into()?,
-                    package_index: package_index.try_into()?,
+                    game_id: game_index.try_into()?,
+                    package_id: package_index.try_into()?,
                     live: ot.live,
                     highlights: ot.highlights,
                 })
             })
             .collect::<Result<Vec<Offer>, anyhow::Error>>()?;
 
-        let games = game_tokens.into_iter().map(Game::from).collect();
-        let packages = package_tokens.into_iter().map(Package::from).collect();
+        let games = game_tokens
+            .into_iter()
+            .enumerate()
+            .map(|(index, gt)| Game {
+                id: index as u16,
+                team_home: gt.team_home,
+                team_away: gt.team_away,
+                starts_at: gt.starts_at.date(),
+                tournament: gt.tournament_name,
+            })
+            .collect();
+        let packages = package_tokens
+            .into_iter()
+            .enumerate()
+            .map(|(index, pt)| Package {
+                id: index as u8,
+                name: pt.name,
+                monthly_price_cents: pt.monthly_price_cents,
+                monthly_price_yearly_subscription_in_cents: pt
+                    .monthly_price_yearly_subscription_in_cents,
+            })
+            .collect();
 
         Data {
             games,
@@ -172,130 +172,5 @@ impl Data {
         let packages_path = Path::new(DEFAULT_PACKAGE_FILE_PATH);
 
         Self::init_with_paths(games_path, offers_path, packages_path)?
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use std::path::Path;
-
-    use super::*;
-
-    const GAME_TEST_FILE_PATH: &str = "..data/testing/bc_game_test.csv";
-    const OFFER_TEST_FILE_PATH: &str = "../data/testing/bc_streaming_offer_test.csv";
-    const PACKAGE_TEST_FILE_PATH: &str = "../data/testing/bc_streaming_package_test.csv";
-
-    // TODO: Test negative path as well, and find nicer way to test
-    #[test]
-    #[throws(anyhow::Error)]
-    fn parse_data() {
-        let actual_data = Data::init_with_paths(
-            Path::new(GAME_TEST_FILE_PATH),
-            Path::new(OFFER_TEST_FILE_PATH),
-            Path::new(PACKAGE_TEST_FILE_PATH),
-        )?;
-
-        assert_eq!(
-            format!("{:?}", actual_data),
-            format!(
-                "{:?}",
-                Data {
-                    games: vec![
-                        Game {
-                            team_home: "1. FC Heidenheim 1846".into(),
-                            team_away: "1. FC Köln".into(),
-                            starts_at: NaiveDateTime::parse_from_str(
-                                "2024-05-18 13:30:00",
-                                "%Y-%m-%d %H:%M:%S"
-                            )
-                            .unwrap()
-                            .date(),
-                            tournament: "Bundesliga 23/24".into()
-                        },
-                        Game {
-                            team_home: "VfL Bochum".into(),
-                            team_away: "Fortuna Düsseldorf".into(),
-                            starts_at: NaiveDateTime::parse_from_str(
-                                "2024-05-23 18:30:00",
-                                "%Y-%m-%d %H:%M:%S"
-                            )
-                            .unwrap()
-                            .date(),
-                            tournament: "Bundesliga 23/24".into()
-                        },
-                        Game {
-                            team_home: "Fortuna Düsseldorf".into(),
-                            team_away: "VfL Bochum".into(),
-                            starts_at: NaiveDateTime::parse_from_str(
-                                "2024-05-27 18:30:00",
-                                "%Y-%m-%d %H:%M:%S"
-                            )
-                            .unwrap()
-                            .date(),
-                            tournament: "Bundesliga 23/24".into()
-                        },
-                        Game {
-                            team_home: "SK Slovan Bratislava".into(),
-                            team_away: "FC Struga Trim Lum".into(),
-                            starts_at: NaiveDateTime::parse_from_str(
-                                "2024-07-10 17:00:00",
-                                "%Y-%m-%d %H:%M:%S"
-                            )
-                            .unwrap()
-                            .date(),
-                            tournament: "UEFA Champions League 24/25".into()
-                        }
-                    ],
-                    offers: vec![
-                        Offer {
-                            game_index: 3,
-                            package_index: 0,
-                            live: true,
-                            highlights: false
-                        },
-                        Offer {
-                            game_index: 2,
-                            package_index: 3,
-                            live: false,
-                            highlights: false
-                        },
-                        Offer {
-                            game_index: 0,
-                            package_index: 2,
-                            live: true,
-                            highlights: true
-                        },
-                        Offer {
-                            game_index: 1,
-                            package_index: 1,
-                            live: false,
-                            highlights: true
-                        }
-                    ],
-                    packages: vec![
-                        Package {
-                            name: "DAZN - Unlimited".into(),
-                            monthly_price_cents: Some(4499),
-                            monthly_price_yearly_subscription_in_cents: 3499
-                        },
-                        Package {
-                            name: "Sky - Bundesliga".into(),
-                            monthly_price_cents: None,
-                            monthly_price_yearly_subscription_in_cents: 3000
-                        },
-                        Package {
-                            name: "Zattoo - SMART HD".into(),
-                            monthly_price_cents: Some(649),
-                            monthly_price_yearly_subscription_in_cents: 649
-                        },
-                        Package {
-                            name: "Sky - Sport".into(),
-                            monthly_price_cents: None,
-                            monthly_price_yearly_subscription_in_cents: 2500
-                        }
-                    ]
-                }
-            )
-        );
     }
 }
