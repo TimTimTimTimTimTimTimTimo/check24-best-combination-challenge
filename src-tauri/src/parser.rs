@@ -5,6 +5,7 @@ use fehler::throws;
 use serde::de::DeserializeOwned;
 use serde::Deserialize;
 use serde::Deserializer;
+use serde::Serialize;
 use smol_str::SmolStr;
 use std::path::Path;
 
@@ -71,12 +72,12 @@ fn deserialize_bool_from_01<'de, D: Deserializer<'de>>(deserializer: D) -> bool 
     }
 }
 
-#[derive(Debug, Default, Clone)]
+#[derive(Debug, Default, Clone, Serialize)]
 pub struct Game {
     pub team_home: SmolStr,
     pub team_away: SmolStr,
     pub starts_at: NaiveDate,
-    pub tournament_name: SmolStr,
+    pub tournament: SmolStr,
 }
 
 impl From<GameToken> for Game {
@@ -85,7 +86,7 @@ impl From<GameToken> for Game {
             team_away: gt.team_away,
             team_home: gt.team_home,
             starts_at: gt.starts_at.date(),
-            tournament_name: gt.tournament_name,
+            tournament: gt.tournament_name,
         }
     }
 }
@@ -209,7 +210,7 @@ mod tests {
                             )
                             .unwrap()
                             .date(),
-                            tournament_name: "Bundesliga 23/24".into()
+                            tournament: "Bundesliga 23/24".into()
                         },
                         Game {
                             team_home: "VfL Bochum".into(),
@@ -220,7 +221,7 @@ mod tests {
                             )
                             .unwrap()
                             .date(),
-                            tournament_name: "Bundesliga 23/24".into()
+                            tournament: "Bundesliga 23/24".into()
                         },
                         Game {
                             team_home: "Fortuna Düsseldorf".into(),
@@ -231,7 +232,7 @@ mod tests {
                             )
                             .unwrap()
                             .date(),
-                            tournament_name: "Bundesliga 23/24".into()
+                            tournament: "Bundesliga 23/24".into()
                         },
                         Game {
                             team_home: "SK Slovan Bratislava".into(),
@@ -242,7 +243,7 @@ mod tests {
                             )
                             .unwrap()
                             .date(),
-                            tournament_name: "UEFA Champions League 24/25".into()
+                            tournament: "UEFA Champions League 24/25".into()
                         }
                     ],
                     offers: vec![
