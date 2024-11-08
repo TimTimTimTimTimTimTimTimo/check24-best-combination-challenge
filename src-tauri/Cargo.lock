@@ -176,6 +176,7 @@ dependencies = [
  "chrono",
  "csv",
  "fehler",
+ "itertools",
  "serde",
  "serde_json",
  "smol_str",

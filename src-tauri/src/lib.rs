@@ -1,13 +1,14 @@
-use std::path::Path;
+use std::{collections::HashMap, path::Path};
 
 use betting_game_data::{Data, Game, Offer};
 use fehler::throws;
+use itertools::Itertools;
 use serde::Serialize;
 
 #[derive(Serialize)]
 struct GamesAndOffers {
     games: Vec<Game>,
-    offers: Vec<Offer>,
+    offers_map: HashMap<u16, Vec<Offer>>,
 }
 
 #[throws(())]
@@ -23,14 +24,14 @@ async fn find_games_and_offers_by_team(
         .cloned()
         .collect();
 
-    let offers: Vec<Offer> = state
+    let offers_map: HashMap<u16, Vec<Offer>> = state
         .offers
         .iter()
         .filter(|offer| games.iter().any(|game| game.id == offer.game_id))
         .cloned()
-        .collect();
+        .into_group_map_by(|offer| offer.game_id);
 
-    GamesAndOffers { games, offers }
+    GamesAndOffers { games, offers_map }
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]

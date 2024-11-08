@@ -6,8 +6,18 @@
     import { tick } from "svelte";
 
     import { invoke } from "@tauri-apps/api/core";
-    import { teams, type Team } from "$lib/generated_types";
-    import type { Game, GamesAndOffers } from "$lib/types";
+    import {
+        packages,
+        type Package,
+        teams,
+        type Team,
+    } from "$lib/generated_types";
+    import type { Game, Offer } from "$lib/types";
+
+    type GamesAndOffers = {
+        games: Game[];
+        offers_map: { [key: number]: Offer[] };
+    };
 
     let teamSelectOpen = $state(false);
     let selectedTeam: Team | null = $state(null);
@@ -16,7 +26,7 @@
     let filteredGamesAndOffersPromise: Promise<GamesAndOffers> = $derived.by(
         async () => {
             if (selectedTeam == null) {
-                return { games: [], offers: [] };
+                return { games: [], offers_map: {} };
             }
             return await invoke("find_games_and_offers_by_team", {
                 team: selectedTeam,
@@ -73,11 +83,14 @@
         </Popover.Root>
     </form>
     <br />
-    {#await filteredGamesAndOffersPromise then { games, offers }}
+    {#await filteredGamesAndOffersPromise then { games, offers_map }}
         <Table.Root>
             <Table.Header>
                 <Table.Row>
                     <Table.Head>Spiel</Table.Head>
+                    {#each packages as pack, i (i)}
+                        <Table.Head>{pack.name}</Table.Head>
+                    {/each}
                 </Table.Row>
             </Table.Header>
             <Table.Body>
@@ -86,6 +99,20 @@
                         <Table.Cell
                             >{game.team_home} vs {game.team_away}</Table.Cell
                         >
+                        {#each packages as pack, i (i)}
+                            <Table.Cell>
+                                {@const offer = offers_map[game.id]?.find(
+                                    (o) => o.package_id === pack.id,
+                                )}
+                                {#if offer}
+                                    {#if offer.live}
+                                        live
+                                    {:else}
+                                        hightlights
+                                    {/if}
+                                {/if}
+                            </Table.Cell>
+                        {/each}
                     </Table.Row>
                 {/each}
             </Table.Body>
