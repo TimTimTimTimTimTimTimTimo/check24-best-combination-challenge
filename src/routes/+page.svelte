@@ -6,20 +6,23 @@
     import { tick } from "svelte";
 
     import { invoke } from "@tauri-apps/api/core";
-    import { Teams, type Team } from "$lib/enums";
-    import type { Game } from "$lib/types";
+    import { teams, type Team } from "$lib/generated_types";
+    import type { Game, GamesAndOffers } from "$lib/types";
 
-    let teams = Teams;
     let teamSelectOpen = $state(false);
     let selectedTeam: Team | null = $state(null);
     let teamTriggerRef: HTMLButtonElement = $state(null!);
 
-    let filtered_games_promise: Promise<Game[]> = $derived.by(async () => {
-        if (selectedTeam == null) {
-            return [];
-        }
-        return await invoke("find_games_by_team", { team: selectedTeam });
-    });
+    let filteredGamesAndOffersPromise: Promise<GamesAndOffers> = $derived.by(
+        async () => {
+            if (selectedTeam == null) {
+                return { games: [], offers: [] };
+            }
+            return await invoke("find_games_and_offers_by_team", {
+                team: selectedTeam,
+            });
+        },
+    );
 
     function closeAndFocusTrigger() {
         teamSelectOpen = false;
@@ -70,22 +73,22 @@
         </Popover.Root>
     </form>
     <br />
-    <Table.Root>
-        <Table.Header>
-            <Table.Row>
-                <Table.Head>Spiel</Table.Head>
-            </Table.Row>
-        </Table.Header>
-        <Table.Body>
-            {#await filtered_games_promise then filtered_games}
-                {#each filtered_games as game, i (i)}
+    {#await filteredGamesAndOffersPromise then { games, offers }}
+        <Table.Root>
+            <Table.Header>
+                <Table.Row>
+                    <Table.Head>Spiel</Table.Head>
+                </Table.Row>
+            </Table.Header>
+            <Table.Body>
+                {#each games as game, i (i)}
                     <Table.Row>
                         <Table.Cell
                             >{game.team_home} vs {game.team_away}</Table.Cell
                         >
                     </Table.Row>
                 {/each}
-            {/await}
-        </Table.Body>
-    </Table.Root>
+            </Table.Body>
+        </Table.Root>
+    {/await}
 </main>

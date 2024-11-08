@@ -1,6 +1,7 @@
-import type { Team, Tournament } from "./enums";
+import type { Team, Tournament } from "./generated_types";
 
 export type Game = {
+  id: number;
   team_home: Team;
   team_away: Team;
   starts_at: Date;
@@ -8,14 +9,20 @@ export type Game = {
 };
 
 export type Offer = {
-  game_index: number;
-  package_index: number;
+  game_id: number;
+  package_id: number;
   live: boolean;
   highlights: boolean;
 };
 
 export type Package = {
+  id: number;
   name: string;
   monthly_price_cents: number | null;
   monthly_price_yearly_subscription_in_cents: number;
+};
+
+export type GamesAndOffers = {
+  games: Game[];
+  offers: Offer[];
 };
