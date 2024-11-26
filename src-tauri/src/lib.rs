@@ -29,8 +29,14 @@ impl GamesAndCombinations {
                 .map(|pack| Combination::new(&[pack.id], &games, data))
                 .collect();
 
+            combinations.sort_by(|c1, c2| {
+                c2.offers
+                    .iter()
+                    .filter(|offer| offer.live)
+                    .count()
+                    .cmp(&c1.offers.iter().filter(|offer| offer.live).count())
+            });
             combinations.sort_by_key(|combi| combi.total_price);
-            // TODO: this can be optimized by simply reversing the cmp function.
             combinations.sort_by(|c1, c2| c2.offers.len().cmp(&c1.offers.len()));
             combinations
         };
