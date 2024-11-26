@@ -22,7 +22,8 @@ export type Package = {
   monthly_price_yearly_subscription_in_cents: number;
 };
 
-export type GamesAndOffers = {
-  games: Game[];
+export type Combination = {
+  package_ids: number[];
   offers: Offer[];
+  total_price: number;
 };

@@ -34,6 +34,6 @@ fn main() {
         &config.offers_path,
         &config.packages_path,
     )?;
-    data.write_to_bin(&config.output_bin_data_path)?;
+    data.write_to_bin_file(&config.output_bin_data_path)?;
     data.write_ts_types(&config.output_ts_types_path)?;
 }

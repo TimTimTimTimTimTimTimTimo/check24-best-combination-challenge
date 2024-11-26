@@ -12,27 +12,35 @@
         teams,
         type Team,
     } from "$lib/generated_types";
-    import type { Game, Offer } from "$lib/types";
+    import type { Combination, Game, Offer } from "$lib/types";
 
-    type GamesAndOffers = {
+    type GamesAndCombinations = {
         games: Game[];
-        offers_map: { [key: number]: Offer[] };
+        combinations: Combination[];
     };
 
     let teamSelectOpen = $state(false);
     let selectedTeam: Team | null = $state(null);
     let teamTriggerRef: HTMLButtonElement = $state(null!);
 
-    let filteredGamesAndOffersPromise: Promise<GamesAndOffers> = $derived.by(
-        async () => {
+    let GamesAndCombinationsPromise: Promise<GamesAndCombinations> =
+        $derived.by(async () => {
             if (selectedTeam == null) {
-                return { games: [], offers_map: {} };
+                return { games: [], combinations: [] };
             }
-            return await invoke("find_games_and_offers_by_team", {
+            return await invoke("find_games_and_combinations_by_team", {
                 team: selectedTeam,
             });
-        },
-    );
+        });
+
+    function getPackagesForCombi(combi: Combination): Package[] {
+        console.log(combi);
+        let packagesForCombi = [];
+        for (let i = 0; i < combi.package_ids.length; i++) {
+            packagesForCombi.push(packages[combi.package_ids[i]]);
+        }
+        return packagesForCombi;
+    }
 
     function closeAndFocusTrigger() {
         teamSelectOpen = false;
@@ -83,13 +91,17 @@
         </Popover.Root>
     </form>
     <br />
-    {#await filteredGamesAndOffersPromise then { games, offers_map }}
+    {#await GamesAndCombinationsPromise then { games, combinations }}
         <Table.Root>
             <Table.Header>
                 <Table.Row>
                     <Table.Head>Spiel</Table.Head>
-                    {#each packages as pack, i (i)}
-                        <Table.Head>{pack.name}</Table.Head>
+                    {#each combinations as combi, i (i)}
+                        <Table.Head
+                            >{getPackagesForCombi(combi).reduce((acc, pack) => {
+                                return `${acc}, ${pack.name}`;
+                            }, `${combi.offers.length}/${games.length} Spielen - ${combi.total_price} Cent monatlich - `)}</Table.Head
+                        >
                     {/each}
                 </Table.Row>
             </Table.Header>
@@ -99,11 +111,12 @@
                         <Table.Cell
                             >{game.team_home} vs {game.team_away}</Table.Cell
                         >
-                        {#each packages as pack, i (i)}
+                        {#each combinations as combi, i (i)}
                             <Table.Cell>
-                                {@const offer = offers_map[game.id]?.find(
-                                    (o) => o.package_id === pack.id,
-                                )}
+                                {@const offer =
+                                    combi.offers.find(
+                                        (offer) => offer.game_id === game.id,
+                                    ) ?? null}
                                 {#if offer}
                                     {#if offer.live}
                                         live

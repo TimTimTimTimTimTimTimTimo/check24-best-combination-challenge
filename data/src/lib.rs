@@ -159,15 +159,14 @@ impl Data {
     }
 
     #[throws(anyhow::Error)]
-    pub fn write_to_bin(&self, path: &Path) {
+    pub fn write_to_bin_file(&self, path: &Path) {
         let file = File::create(path)?;
         bincode::serialize_into(file, &self)?;
     }
 
     #[throws(anyhow::Error)]
-    pub fn load_from_bin(path: &Path) -> Self {
-        let file = File::open(path)?;
-        bincode::deserialize_from(&file)?
+    pub fn load_from_bin(bytes: &[u8]) -> Self {
+        bincode::deserialize(bytes)?
     }
 
     #[throws(anyhow::Error)]
