@@ -27,6 +27,7 @@ impl GamesAndCombinations {
                 .packages
                 .iter()
                 .map(|pack| Combination::new(&[pack.id], &games, data))
+                .filter(|combi| !combi.offers.is_empty())
                 .collect();
 
             combinations.sort_by(|c1, c2| {
