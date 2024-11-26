@@ -97,7 +97,6 @@ pub fn run() {
 
     tauri::Builder::default()
         .manage::<Data>(Data::load_from_bin(data_bin).unwrap())
-        .plugin(tauri_plugin_shell::init())
         .invoke_handler(tauri::generate_handler![
             find_games_and_combinations_by_team
         ])
