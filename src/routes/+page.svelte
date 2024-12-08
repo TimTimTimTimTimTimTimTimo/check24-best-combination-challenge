@@ -1,9 +1,14 @@
 <script lang="ts">
     import * as Command from "$lib/components/ui/command/index.js";
-    import * as Table from "$lib/components/ui/table/index.js";
     import * as Popover from "$lib/components/ui/popover/index.js";
     import { Button } from "$lib/components/ui/button/index.js";
+    import * as Card from "$lib/components/ui/card/index.js";
+    import * as Carousel from "$lib/components/ui/carousel/index.js";
+    import { Separator } from "$lib/components/ui/separator/index.js";
     import { tick } from "svelte";
+    import X from "lucide-svelte/icons/x";
+
+    import { SvelteSet } from "svelte/reactivity";
 
     import { invoke } from "@tauri-apps/api/core";
     import {
@@ -14,27 +19,26 @@
     } from "$lib/generated_types";
     import type { Combination, Game, Offer } from "$lib/types";
 
-    type GamesAndCombinations = {
-        games: Game[];
-        combinations: Combination[];
+    let selectedTeams: Set<Team> = $state(new SvelteSet());
+
+    type FetchCombinationsResponse = {
+        game_count: number;
+        best_combination: Combination;
+        single_combinations: Combination[];
     };
 
-    let teamSelectOpen = $state(false);
-    let selectedTeam: Team | null = $state(null);
-    let teamTriggerRef: HTMLButtonElement = $state(null!);
+    let combiResponse: FetchCombinationsResponse | null = $state(null);
+    let combiLoading = $state(false);
 
-    let GamesAndCombinationsPromise: Promise<GamesAndCombinations> =
-        $derived.by(async () => {
-            if (selectedTeam == null) {
-                return { games: [], combinations: [] };
-            }
-            return await invoke("find_games_and_combinations_by_team", {
-                team: selectedTeam,
-            });
+    async function fetchCombinations() {
+        combiLoading = true;
+        combiResponse = await invoke("fetch_combinations", {
+            teams: Array.from(selectedTeams),
         });
+        combiLoading = false;
+    }
 
     function getPackagesForCombi(combi: Combination): Package[] {
-        console.log(combi);
         let packagesForCombi = [];
         for (let i = 0; i < combi.package_ids.length; i++) {
             packagesForCombi.push(packages[combi.package_ids[i]]);
@@ -42,7 +46,9 @@
         return packagesForCombi;
     }
 
-    function closeAndFocusTrigger() {
+    let teamSelectOpen = $state(false);
+    let teamTriggerRef: HTMLButtonElement = $state(null!);
+    function teamCloseAndFocusTrigger() {
         teamSelectOpen = false;
         tick().then(() => {
             teamTriggerRef.focus();
@@ -52,7 +58,7 @@
 
 <main class="p-10">
     <form>
-        <label for="team">Team: </label>
+        <label for="teams">Gewählte Teams: </label>
         <Popover.Root bind:open={teamSelectOpen}>
             <Popover.Trigger bind:ref={teamTriggerRef}>
                 {#snippet child({ props })}
@@ -63,22 +69,23 @@
                         role="combobox"
                         aria-expanded={teamSelectOpen}
                     >
-                        {selectedTeam || "Wähle ein Team aus..."}
+                        Team hinzufügen
                     </Button>
                 {/snippet}
             </Popover.Trigger>
             <Popover.Content class="w-[200px] p-0">
                 <Command.Root>
-                    <Command.Input id="team" placeholder="Team suchen..." />
+                    <Command.Input placeholder="Team suchen..." />
                     <Command.List>
                         <Command.Empty>Kein Team gefunden.</Command.Empty>
                         <Command.Group>
-                            {#each teams as team}
+                            {#each teams as team, i (i)}
                                 <Command.Item
                                     value={team}
                                     onSelect={() => {
-                                        selectedTeam = team;
-                                        closeAndFocusTrigger();
+                                        selectedTeams.add(team);
+                                        fetchCombinations();
+                                        teamCloseAndFocusTrigger();
                                     }}
                                 >
                                     {team}
@@ -89,46 +96,73 @@
                 </Command.Root>
             </Popover.Content>
         </Popover.Root>
+        <div class="h-2"></div>
+        <div id="teams" class="flex-row space-x-1">
+            {#each selectedTeams as team}
+                <Button
+                    onclick={() => {
+                        selectedTeams.delete(team);
+                        fetchCombinations();
+                    }}>{team} <X /></Button
+                >
+            {/each}
+        </div>
     </form>
     <br />
-    {#await GamesAndCombinationsPromise then { games, combinations }}
-        <Table.Root>
-            <Table.Header>
-                <Table.Row>
-                    <Table.Head>Spiel</Table.Head>
-                    {#each combinations as combi, i (i)}
-                        <Table.Head
-                            >{getPackagesForCombi(combi).reduce((acc, pack) => {
-                                return `${acc}, ${pack.name}`;
-                            }, `${combi.offers.length}/${games.length} Spielen - ${combi.total_price} Cent monatlich - `)}</Table.Head
-                        >
-                    {/each}
-                </Table.Row>
-            </Table.Header>
-            <Table.Body>
-                {#each games as game, i (i)}
-                    <Table.Row>
-                        <Table.Cell
-                            >{game.team_home} vs {game.team_away}</Table.Cell
-                        >
-                        {#each combinations as combi, i (i)}
-                            <Table.Cell>
-                                {@const offer =
-                                    combi.offers.find(
-                                        (offer) => offer.game_id === game.id,
-                                    ) ?? null}
-                                {#if offer}
-                                    {#if offer.live}
-                                        live
-                                    {:else}
-                                        hightlights
-                                    {/if}
-                                {/if}
-                            </Table.Cell>
-                        {/each}
-                    </Table.Row>
+    {#if combiResponse}
+        {@const { game_count, best_combination, single_combinations } =
+            combiResponse}
+        <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
+            <Carousel.Content>
+                {@render CombinationCard(
+                    best_combination.package_ids.length > 1
+                        ? "Beste Kombination!"
+                        : "Bestes Paket!",
+                    game_count,
+                    best_combination,
+                )}
+                {#each single_combinations as combi, i (i)}
+                    {@render CombinationCard(i, game_count, combi)}
                 {/each}
-            </Table.Body>
-        </Table.Root>
-    {/await}
+            </Carousel.Content>
+            <Carousel.Previous />
+            <Carousel.Next />
+        </Carousel.Root>
+    {:else}
+        <div>Keine Teams ausgewählt.</div>
+    {/if}
 </main>
+
+{#snippet CombinationCard(name: string, game_count: number, combi: Combination)}
+    <Carousel.Item class="md:basis-1/3 lg:basis-1/6 h-96">
+        <Card.Root class="hover:shadow">
+            <Card.Header class="h-32">
+                <Card.Title
+                    class="flex justify-center items-center text-center h-14"
+                >
+                    {name}
+                </Card.Title>
+                <div class="h-14">
+                    {getPackagesForCombi(combi)
+                        .map((p) => p.name)
+                        .join(" + ")}
+                </div>
+            </Card.Header>
+            <Card.Content>
+                <Separator class="my-4" />
+                <div>Von {game_count} Spielen:</div>
+                <div>
+                    {combi.total_coverage} Gesamt
+                </div>
+                <div>{combi.live_coverage} Live</div>
+                <div>
+                    {combi.highlights_coverage} Highlights
+                </div>
+                <Separator class="my-4" />
+                <div>
+                    {(combi.total_price * 12) / 100}€ pro Jahr
+                </div>
+            </Card.Content>
+        </Card.Root>
+    </Carousel.Item>
+{/snippet}

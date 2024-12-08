@@ -24,6 +24,8 @@ export type Package = {
 
 export type Combination = {
   package_ids: number[];
-  offers: Offer[];
+  live_coverage: number;
+  highlights_coverage: number;
+  total_coverage: number;
   total_price: number;
 };
