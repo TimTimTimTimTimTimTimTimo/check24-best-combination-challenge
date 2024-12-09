@@ -83,19 +83,13 @@ fn find_best_combination(game_ids: &[u16], data: &Data) -> Combination {
 
     return Combination::new(&package_ids, game_ids, data);
 
-    fn find_best_package(packages: &[Package], filtered_offers: &[Offer]) -> Package {
+    fn find_best_package(packages: &[Package], offers: &[Offer]) -> Package {
         debug_assert!(!packages.is_empty());
         packages
             .iter()
             .min_by(|p1, p2| {
-                let p1_coverage = filtered_offers
-                    .iter()
-                    .filter(|o| o.package_id == p1.id)
-                    .count();
-                let p2_coverage = filtered_offers
-                    .iter()
-                    .filter(|o| o.package_id == p2.id)
-                    .count();
+                let p1_coverage = offers.iter().filter(|o| o.package_id == p1.id).count();
+                let p2_coverage = offers.iter().filter(|o| o.package_id == p2.id).count();
 
                 p2_coverage.cmp(&p1_coverage).then(
                     p1.monthly_price_yearly_subscription_in_cents
@@ -117,16 +111,16 @@ struct FetchCombinationsResponse {
 #[throws(())]
 #[tauri::command(rename_all = "snake_case")]
 async fn fetch_combinations(
-    teams: Vec<String>,
+    team_ids: Vec<u16>,
     state: tauri::State<'_, Data>,
 ) -> FetchCombinationsResponse {
     let filtered_game_ids: Vec<u16> = state
         .games
         .iter()
         .filter(|game| {
-            teams
+            team_ids
                 .iter()
-                .any(|team| team == game.team_away || team == game.team_home)
+                .any(|&t_id| t_id == game.team_away_id || t_id == game.team_home_id)
         })
         .map(|g| g.id)
         .collect();

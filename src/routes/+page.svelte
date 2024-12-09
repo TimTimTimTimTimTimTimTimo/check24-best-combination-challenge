@@ -19,7 +19,7 @@
     } from "$lib/generated_types";
     import type { Combination, Game, Offer } from "$lib/types";
 
-    let selectedTeams: Set<Team> = $state(new SvelteSet());
+    let selectedTeamIds: Set<number> = $state(new SvelteSet());
 
     type FetchCombinationsResponse = {
         game_count: number;
@@ -33,7 +33,7 @@
     async function fetchCombinations() {
         combiLoading = true;
         combiResponse = await invoke("fetch_combinations", {
-            teams: Array.from(selectedTeams),
+            team_ids: Array.from(selectedTeamIds),
         });
         combiLoading = false;
     }
@@ -45,6 +45,19 @@
         }
         return packagesForCombi;
     }
+
+    let teamSelectInput = $state("");
+    let selectableTeams = $derived.by(() => {
+        if (teamSelectInput.length == 0) {
+            return teams.slice(0, 100);
+        }
+
+        let matching = teams.filter((team) =>
+            team.toLowerCase().includes(teamSelectInput.toLowerCase()),
+        );
+
+        return matching.slice(0, 12);
+    });
 
     let teamSelectOpen = $state(false);
     let teamTriggerRef: HTMLButtonElement = $state(null!);
@@ -74,16 +87,21 @@
                 {/snippet}
             </Popover.Trigger>
             <Popover.Content class="w-[200px] p-0">
-                <Command.Root>
-                    <Command.Input placeholder="Team suchen..." />
+                <Command.Root shouldFilter={false}>
+                    <Command.Input
+                        bind:value={teamSelectInput}
+                        placeholder="Team suchen..."
+                    />
                     <Command.List>
                         <Command.Empty>Kein Team gefunden.</Command.Empty>
                         <Command.Group>
-                            {#each teams as team, i (i)}
+                            {#each selectableTeams as team}
                                 <Command.Item
                                     value={team}
                                     onSelect={() => {
-                                        selectedTeams.add(team);
+                                        selectedTeamIds.add(
+                                            teams.findIndex((t) => t === team),
+                                        );
                                         fetchCombinations();
                                         teamCloseAndFocusTrigger();
                                     }}
@@ -98,12 +116,12 @@
         </Popover.Root>
         <div class="h-2"></div>
         <div id="teams" class="flex-row space-x-1">
-            {#each selectedTeams as team}
+            {#each selectedTeamIds as id (id)}
                 <Button
                     onclick={() => {
-                        selectedTeams.delete(team);
+                        selectedTeamIds.delete(id);
                         fetchCombinations();
-                    }}>{team} <X /></Button
+                    }}>{teams[id]} <X /></Button
                 >
             {/each}
         </div>
@@ -122,7 +140,7 @@
                     best_combination,
                 )}
                 {#each single_combinations as combi, i (i)}
-                    {@render CombinationCard(i, game_count, combi)}
+                    {@render CombinationCard(i.toString(), game_count, combi)}
                 {/each}
             </Carousel.Content>
             <Carousel.Previous />

@@ -1,6 +1,7 @@
-use std::{collections::HashSet, fs::File, io::BufWriter, path::Path};
+use std::{collections::HashMap, fs::File, io::BufWriter, ops::AddAssign, path::Path};
 
 use chrono::NaiveDateTime;
+use derive_more::derive::Display;
 use fehler::throws;
 use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
@@ -68,10 +69,10 @@ fn deserialize_bool_from_01<'de, D: Deserializer<'de>>(deserializer: D) -> bool 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Game {
     pub id: u16,
-    pub team_home: SmolStr,
-    pub team_away: SmolStr,
+    pub team_home_id: u16,
+    pub team_away_id: u16,
     pub starts_at: NaiveDateTime,
-    pub tournament: SmolStr,
+    pub tournament: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -90,8 +91,16 @@ pub struct Package {
     pub monthly_price_yearly_subscription_in_cents: u32,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone, Display, PartialEq, Eq, Hash)]
+pub struct Team(SmolStr);
+
+#[derive(Debug, Serialize, Deserialize, Clone, Display, PartialEq, Eq)]
+pub struct Tournament(SmolStr);
+
 #[derive(Serialize, Deserialize)]
 pub struct Data {
+    pub teams: Vec<Team>,
+    pub tournaments: Vec<Tournament>,
     pub games: Vec<Game>,
     pub offers: Vec<Offer>,
     pub packages: Vec<Package>,
@@ -128,17 +137,58 @@ impl Data {
             })
             .collect::<Result<Vec<Offer>, anyhow::Error>>()?;
 
+        // teams are sorted by how many games they have
+        let teams: Vec<Team> = {
+            let mut team_map: HashMap<Team, u16> = HashMap::new();
+
+            game_tokens
+                .iter()
+                .flat_map(|game| [Team(game.team_home.clone()), Team(game.team_away.clone())])
+                .for_each(|team| match team_map.get_mut(&team) {
+                    Some(count) => *count += 1,
+                    None => {
+                        if let Some(_) = team_map.insert(team, 1) {
+                            unreachable!()
+                        }
+                    }
+                });
+
+            team_map
+                .into_iter()
+                .sorted_by_key(|&(_, count)| count)
+                .rev()
+                .map(|(team, _)| team)
+                .collect_vec()
+        };
+
+        let tournaments: Vec<Tournament> = game_tokens
+            .iter()
+            .map(|g| g.tournament_name.clone())
+            .unique()
+            .map(|s| Tournament(s))
+            .collect();
+
         let games = game_tokens
             .into_iter()
             .enumerate()
             .map(|(index, gt)| Game {
                 id: index as u16,
-                team_home: gt.team_home,
-                team_away: gt.team_away,
+                team_home_id: teams
+                    .iter()
+                    .position(|t| *t.0 == gt.team_home)
+                    .expect("team was not found.") as u16,
+                team_away_id: teams
+                    .iter()
+                    .position(|t| *t.0 == gt.team_away)
+                    .expect("team was not found.") as u16,
                 starts_at: gt.starts_at,
-                tournament: gt.tournament_name,
+                tournament: tournaments
+                    .iter()
+                    .position(|t| *t.0 == gt.tournament_name)
+                    .expect("tournament was not found.") as u8,
             })
             .collect();
+
         let packages = package_tokens
             .into_iter()
             .enumerate()
@@ -152,6 +202,8 @@ impl Data {
             .collect();
 
         Data {
+            teams,
+            tournaments,
             games,
             offers,
             packages,
@@ -176,31 +228,19 @@ impl Data {
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
 
-        let unique_teams: HashSet<&str> = self
-            .games
-            .iter()
-            .flat_map(|game| [game.team_home.as_str(), game.team_away.as_str()])
-            .collect();
-
         writeln!(
             writer,
             "
             export const teams = [{}];
             export type Team = typeof teams[number];
             ",
-            unique_teams
-                .into_iter()
+            self.teams
+                .iter()
                 .map(|team| format!("\"{team}\""))
                 .join(",")
         )?;
 
         writeln!(writer)?;
-
-        let unique_tournaments: HashSet<&str> = self
-            .games
-            .iter()
-            .map(|game| game.tournament.as_str())
-            .collect();
 
         writeln!(
             writer,
@@ -208,8 +248,8 @@ impl Data {
             export const tournaments = [{}];
             export type Tournament = typeof tournaments[number];
             ",
-            unique_tournaments
-                .into_iter()
+            self.tournaments
+                .iter()
                 .map(|tournament| format!("\"{tournament}\""))
                 .join(",")
         )?;
