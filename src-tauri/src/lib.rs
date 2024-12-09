@@ -1,4 +1,4 @@
-use betting_game_data::{Data, Game, Offer, Package};
+use betting_game_data::{Data, Offer, Package};
 use fehler::throws;
 use itertools::Itertools;
 use serde::Serialize;
@@ -122,7 +122,7 @@ async fn fetch_combinations(
         .map(|g| g.id)
         .collect();
 
-    println!("{:?}", filtered_game_ids);
+    // println!("{:?}", filtered_game_ids);
 
     let single_combis: Vec<Combination> = state
         .packages

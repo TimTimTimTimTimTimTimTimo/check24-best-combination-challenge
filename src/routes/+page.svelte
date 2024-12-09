@@ -62,6 +62,7 @@
     let teamSelectOpen = $state(false);
     let teamTriggerRef: HTMLButtonElement = $state(null!);
     function teamCloseAndFocusTrigger() {
+        teamSelectInput = "";
         teamSelectOpen = false;
         tick().then(() => {
             teamTriggerRef.focus();
