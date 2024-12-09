@@ -4,7 +4,7 @@ use itertools::Itertools;
 use serde::Serialize;
 
 #[derive(Serialize, Default)]
-struct Combination {
+pub struct Combination {
     package_ids: Vec<u8>,
     live_coverage: u16,
     highlights_coverage: u16,
@@ -47,13 +47,10 @@ impl Combination {
 }
 
 fn find_best_combination(game_ids: &[u16], data: &Data) -> Combination {
-    // let game_ids: &Vec<u16> = &data.games.iter().map(|g| g.id).collect();
-
     let filtered_offers: Vec<Offer> = data
         .offers
         .iter()
         .filter(|o| game_ids.contains(&o.game_id))
-        // .filter(|o| o.live)
         .cloned()
         .collect();
 
@@ -125,6 +122,8 @@ async fn fetch_combinations(
         .map(|g| g.id)
         .collect();
 
+    println!("{:?}", filtered_game_ids);
+
     let single_combis: Vec<Combination> = state
         .packages
         .iter()
@@ -140,11 +139,28 @@ async fn fetch_combinations(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let data_bin = include_bytes!("../betting_game.dat");
-
     tauri::Builder::default()
-        .manage::<Data>(Data::load_from_bin(data_bin).unwrap())
+        .manage::<Data>(load_data())
         .invoke_handler(tauri::generate_handler![fetch_combinations])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
+}
+
+pub fn load_data() -> Data {
+    let data_bin = include_bytes!("../betting_game.dat");
+    let data = Data::load_from_bin(data_bin).unwrap();
+    data
+}
+
+// Bayern München
+pub fn best_combination_single(data: &Data) -> Combination {
+    let game_ids: &[u16] = &[
+        51, 68, 75, 78, 88, 102, 112, 120, 124, 138, 145, 150, 160, 170, 185, 192, 195, 211, 213,
+        218, 224, 239, 250, 256, 260, 271, 283, 292, 301, 306, 319, 324, 336, 348, 355, 5301, 5316,
+        5321, 5326, 5337, 5345, 5360, 5363, 5379, 5382, 5390, 5400, 5412, 5418, 5432, 5436, 5445,
+        5455, 5463, 5470, 5479, 5488, 5497, 5507, 5521, 5525, 5537, 5544, 5553, 5562, 5569, 5580,
+        5589, 7349, 7885, 8434, 8460, 8480, 8497, 8508, 8527, 8554, 8562, 8839,
+    ];
+
+    find_best_combination(game_ids, data)
 }
