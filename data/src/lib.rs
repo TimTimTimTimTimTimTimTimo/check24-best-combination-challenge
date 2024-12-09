@@ -72,7 +72,7 @@ pub struct Game {
     pub team_home_id: u16,
     pub team_away_id: u16,
     pub starts_at: NaiveDateTime,
-    pub tournament: u8,
+    pub tournament_id: u8,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -182,7 +182,7 @@ impl Data {
                     .position(|t| *t.0 == gt.team_away)
                     .expect("team was not found.") as u16,
                 starts_at: gt.starts_at,
-                tournament: tournaments
+                tournament_id: tournaments
                     .iter()
                     .position(|t| *t.0 == gt.tournament_name)
                     .expect("tournament was not found.") as u8,
