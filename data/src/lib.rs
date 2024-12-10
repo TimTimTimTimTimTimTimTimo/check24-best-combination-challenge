@@ -3,6 +3,7 @@ use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 use chrono::NaiveDateTime;
 use derive_more::derive::Display;
 use fehler::throws;
+use index_vec::IndexVec;
 use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
@@ -68,24 +69,25 @@ fn deserialize_bool_from_01<'de, D: Deserializer<'de>>(deserializer: D) -> bool 
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Game {
-    pub id: u16,
-    pub team_home_id: u16,
-    pub team_away_id: u16,
+    pub id: GameId,
+    pub team_home_id: TeamId,
+    pub team_away_id: TeamId,
     pub starts_at: NaiveDateTime,
-    pub tournament_id: u8,
+    pub tournament_id: TournamentId,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct Offer {
-    pub game_id: u16,
-    pub package_id: u8,
+    pub id: OfferId,
+    pub game_id: GameId,
+    pub package_id: PackageId,
     pub live: bool,
     pub highlights: bool,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct Package {
-    pub id: u8,
+    pub id: PackageId,
     pub name: SmolStr,
     pub monthly_price_cents: Option<u32>,
     pub monthly_price_yearly_subscription_in_cents: u32,
@@ -97,13 +99,29 @@ pub struct Team(SmolStr);
 #[derive(Debug, Serialize, Deserialize, Clone, Display, PartialEq, Eq)]
 pub struct Tournament(SmolStr);
 
+index_vec::define_index_type! {
+    pub struct GameId = u16;
+}
+index_vec::define_index_type! {
+    pub struct OfferId = u16;
+}
+index_vec::define_index_type! {
+    pub struct PackageId = u8;
+}
+index_vec::define_index_type! {
+    pub struct TeamId = u16;
+}
+index_vec::define_index_type! {
+    pub struct TournamentId = u16;
+}
+
 #[derive(Serialize, Deserialize)]
 pub struct Data {
-    pub teams: Vec<Team>,
-    pub tournaments: Vec<Tournament>,
-    pub games: Vec<Game>,
-    pub offers: Vec<Offer>,
-    pub packages: Vec<Package>,
+    pub teams: IndexVec<TeamId, Team>,
+    pub tournaments: IndexVec<TournamentId, Tournament>,
+    pub games: IndexVec<GameId, Game>,
+    pub offers: IndexVec<OfferId, Offer>,
+    pub packages: IndexVec<PackageId, Package>,
 }
 
 impl Data {
@@ -115,7 +133,8 @@ impl Data {
 
         let offers = offer_tokens
             .iter()
-            .map(|ot| {
+            .enumerate()
+            .map(|(i, ot)| {
                 let game_id = ot.game_id;
                 let package_id = ot.streaming_package_id;
 
@@ -129,16 +148,17 @@ impl Data {
                     .ok_or(anyhow::anyhow!("Package ID {package_id} not found"))?;
 
                 Ok(Offer {
-                    game_id: game_index.try_into()?,
-                    package_id: package_index.try_into()?,
+                    id: OfferId::new(i),
+                    game_id: GameId::new(game_index),
+                    package_id: PackageId::new(package_index),
                     live: ot.live,
                     highlights: ot.highlights,
                 })
             })
-            .collect::<Result<Vec<Offer>, anyhow::Error>>()?;
+            .collect::<Result<IndexVec<OfferId, Offer>, anyhow::Error>>()?;
 
         // teams are sorted by how many games they have
-        let teams: Vec<Team> = {
+        let teams: IndexVec<TeamId, Team> = {
             let mut team_map: HashMap<Team, u16> = HashMap::new();
 
             game_tokens
@@ -158,10 +178,10 @@ impl Data {
                 .sorted_by_key(|&(_, count)| count)
                 .rev()
                 .map(|(team, _)| team)
-                .collect_vec()
+                .collect()
         };
 
-        let tournaments: Vec<Tournament> = game_tokens
+        let tournaments: IndexVec<TournamentId, Tournament> = game_tokens
             .iter()
             .map(|g| g.tournament_name.clone())
             .unique()
@@ -172,20 +192,26 @@ impl Data {
             .into_iter()
             .enumerate()
             .map(|(index, gt)| Game {
-                id: index as u16,
-                team_home_id: teams
-                    .iter()
-                    .position(|t| *t.0 == gt.team_home)
-                    .expect("team was not found.") as u16,
-                team_away_id: teams
-                    .iter()
-                    .position(|t| *t.0 == gt.team_away)
-                    .expect("team was not found.") as u16,
+                id: GameId::new(index),
+                team_home_id: TeamId::new(
+                    teams
+                        .iter()
+                        .position(|t| *t.0 == gt.team_home)
+                        .expect("team was not found."),
+                ),
+                team_away_id: TeamId::new(
+                    teams
+                        .iter()
+                        .position(|t| *t.0 == gt.team_away)
+                        .expect("team was not found."),
+                ),
                 starts_at: gt.starts_at,
-                tournament_id: tournaments
-                    .iter()
-                    .position(|t| *t.0 == gt.tournament_name)
-                    .expect("tournament was not found.") as u8,
+                tournament_id: TournamentId::new(
+                    tournaments
+                        .iter()
+                        .position(|t| *t.0 == gt.tournament_name)
+                        .expect("tournament was not found."),
+                ),
             })
             .collect();
 
@@ -193,7 +219,7 @@ impl Data {
             .into_iter()
             .enumerate()
             .map(|(index, pt)| Package {
-                id: index as u8,
+                id: PackageId::new(index),
                 name: pt.name,
                 monthly_price_cents: pt.monthly_price_cents,
                 monthly_price_yearly_subscription_in_cents: pt

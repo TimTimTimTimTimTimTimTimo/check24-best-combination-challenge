@@ -184,6 +184,7 @@ dependencies = [
  "betting-game-data",
  "chrono",
  "fehler",
+ "index_vec",
  "insta",
  "itertools",
  "serde",
@@ -204,6 +205,7 @@ dependencies = [
  "csv",
  "derive_more 1.0.0",
  "fehler",
+ "index_vec",
  "itertools",
  "serde",
  "serde_json",
@@ -1751,6 +1753,15 @@ checksum = "daca1df1c957320b2cf139ac61e7bd64fed304c5040df000a745aa1de3b4ef71"
 dependencies = [
  "icu_normalizer",
  "icu_properties",
+]
+
+[[package]]
+name = "index_vec"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44faf5bb8861a9c72e20d3fb0fdbd59233e43056e2b80475ab0aacdc2e781355"
+dependencies = [
+ "serde",
 ]
 
 [[package]]

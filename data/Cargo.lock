@@ -89,6 +89,7 @@ dependencies = [
  "csv",
  "derive_more",
  "fehler",
+ "index_vec",
  "itertools",
  "serde",
  "serde_json",
@@ -312,6 +313,15 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "f31827a206f56af32e590ba56d5d2d085f558508192593743f16b2306495269f"
 dependencies = [
  "cc",
+]
+
+[[package]]
+name = "index_vec"
+version = "0.1.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "44faf5bb8861a9c72e20d3fb0fdbd59233e43056e2b80475ab0aacdc2e781355"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
