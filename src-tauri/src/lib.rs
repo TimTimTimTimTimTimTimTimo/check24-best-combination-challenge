@@ -1,6 +1,5 @@
 use betting_game_data::{Data, GameId, Offer, Package, PackageId, TeamId};
 use fehler::throws;
-use index_vec::IndexSlice;
 use itertools::Itertools;
 use serde::Serialize;
 
@@ -55,39 +54,45 @@ fn find_best_combination(game_ids: &[GameId], data: &Data) -> Combination {
         .cloned()
         .collect();
 
-    let mut package_ids = vec![];
-
-    let mut remaining_packages = data.packages.to_owned();
-    // removes any games which do not have offers at all TODO: better way? data is useful
-    let mut remaining_game_ids: Vec<_> =
+    let filtered_game_ids: Vec<GameId> =
         filtered_offers.iter().map(|o| o.game_id).unique().collect();
 
-    let mut remaining_offers: Vec<Offer> = filtered_offers.to_owned();
-    // TODO: this is kind off dangerous? Not really though
+    let packages: Vec<Package> = filtered_offers
+        .iter()
+        .map(|o| o.package_id)
+        .unique()
+        .map(|p_id| &data.packages[p_id])
+        .cloned()
+        .collect();
+
+    let best_package_ids = find_best_packages(filtered_game_ids, filtered_offers, packages);
+
+    return Combination::new(&best_package_ids, game_ids, data);
+}
+
+fn find_best_packages(
+    game_ids: Vec<GameId>,
+    offers: Vec<Offer>,
+    packages: Vec<Package>,
+) -> Vec<PackageId> {
+    let mut remaining_game_ids = game_ids;
+    let mut remaining_offers = offers;
+    let mut remaining_packages = packages;
+
+    let mut result_package_ids = vec![];
+
     while !remaining_game_ids.is_empty() && !remaining_packages.is_empty() {
-        let best_pack = find_best_package(&remaining_packages, &remaining_offers);
-        let covered_game_ids: Vec<_> = remaining_offers
-            .iter()
-            .filter(|o| o.package_id == best_pack.id)
-            .map(|o| o.game_id)
-            .collect();
-
-        remaining_game_ids.retain(|g| !covered_game_ids.contains(g));
-        remaining_offers.retain(|o| remaining_game_ids.contains(&o.game_id));
-        remaining_packages.retain(|p| p.id != best_pack.id);
-
-        package_ids.push(best_pack.id);
-    }
-
-    return Combination::new(&package_ids, game_ids, data);
-
-    fn find_best_package(packages: &IndexSlice<PackageId, [Package]>, offers: &[Offer]) -> Package {
-        debug_assert!(!packages.is_empty());
-        packages
+        let best_package_id = remaining_packages
             .iter()
             .min_by(|p1, p2| {
-                let p1_coverage = offers.iter().filter(|o| o.package_id == p1.id).count();
-                let p2_coverage = offers.iter().filter(|o| o.package_id == p2.id).count();
+                let p1_coverage = remaining_offers
+                    .iter()
+                    .filter(|o| o.package_id == p1.id)
+                    .count();
+                let p2_coverage = remaining_offers
+                    .iter()
+                    .filter(|o| o.package_id == p2.id)
+                    .count();
 
                 p2_coverage.cmp(&p1_coverage).then(
                     p1.monthly_price_yearly_subscription_in_cents
@@ -95,8 +100,22 @@ fn find_best_combination(game_ids: &[GameId], data: &Data) -> Combination {
                 )
             })
             .unwrap()
-            .to_owned()
+            .id;
+
+        let covered_game_ids: Vec<_> = remaining_offers
+            .iter()
+            .filter(|o| o.package_id == best_package_id)
+            .map(|o| o.game_id)
+            .collect();
+
+        remaining_game_ids.retain(|g| !covered_game_ids.contains(g));
+        remaining_offers.retain(|o| remaining_game_ids.contains(&o.game_id));
+        remaining_packages.retain(|p| p.id != best_package_id);
+
+        result_package_ids.push(best_package_id);
     }
+
+    result_package_ids
 }
 
 #[derive(Serialize)]
