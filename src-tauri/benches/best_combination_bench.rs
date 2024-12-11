@@ -5,7 +5,7 @@ use best_combination_lib::{
     best_combination_single, load_data,
 };
 use betting_game_data::Data;
-use tango_bench::{benchmark_fn, tango_benchmarks, tango_main, IntoBenchmarks};
+use tango_bench::*;
 
 fn best_combination_benchmarks() -> impl IntoBenchmarks {
     let data: &'static Data = Box::leak(Box::new(load_data()));

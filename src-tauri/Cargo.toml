@@ -30,11 +30,11 @@ index_vec = "0.1.4"
 
 [dev-dependencies]
 insta = { version = "1.41.1", features = ["yaml"] }
-tango-bench = "0.6"
+tango-bench = { version = "0.6" }
 
 [profile.dev.package]
 insta.opt-level = 3
 
 [[bench]]
-name = "best-combination"
+name = "best_combination_bench"
 harness = false
