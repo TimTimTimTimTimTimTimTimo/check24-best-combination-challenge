@@ -65,12 +65,61 @@ fn find_best_combination(game_ids: &[GameId], data: &Data) -> Combination {
         .cloned()
         .collect();
 
-    let best_package_ids = find_best_packages(filtered_game_ids, filtered_offers, packages);
+    let best_package_ids =
+        find_best_packages_exhaustive(filtered_game_ids, filtered_offers, packages);
 
     return Combination::new(&best_package_ids, game_ids, data);
 }
 
-fn find_best_packages(
+fn find_best_packages_greedy(
+    game_ids: Vec<GameId>,
+    offers: Vec<Offer>,
+    packages: Vec<Package>,
+) -> Vec<PackageId> {
+    let mut remaining_game_ids = game_ids;
+    let mut remaining_offers = offers;
+    let mut remaining_packages = packages;
+
+    let mut result_package_ids = vec![];
+
+    while !remaining_game_ids.is_empty() && !remaining_packages.is_empty() {
+        let best_package_id = remaining_packages
+            .iter()
+            .min_by(|p1, p2| {
+                let p1_coverage = remaining_offers
+                    .iter()
+                    .filter(|o| o.package_id == p1.id)
+                    .count();
+                let p2_coverage = remaining_offers
+                    .iter()
+                    .filter(|o| o.package_id == p2.id)
+                    .count();
+
+                p2_coverage.cmp(&p1_coverage).then(
+                    p1.monthly_price_yearly_subscription_in_cents
+                        .cmp(&p2.monthly_price_yearly_subscription_in_cents),
+                )
+            })
+            .unwrap()
+            .id;
+
+        let covered_game_ids: Vec<_> = remaining_offers
+            .iter()
+            .filter(|o| o.package_id == best_package_id)
+            .map(|o| o.game_id)
+            .collect();
+
+        remaining_game_ids.retain(|g| !covered_game_ids.contains(g));
+        remaining_offers.retain(|o| remaining_game_ids.contains(&o.game_id));
+        remaining_packages.retain(|p| p.id != best_package_id);
+
+        result_package_ids.push(best_package_id);
+    }
+
+    result_package_ids
+}
+
+fn find_best_packages_exhaustive(
     game_ids: Vec<GameId>,
     offers: Vec<Offer>,
     packages: Vec<Package>,
