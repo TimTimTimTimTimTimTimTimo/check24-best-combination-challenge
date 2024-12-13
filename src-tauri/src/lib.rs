@@ -1,5 +1,8 @@
+use std::collections::{HashMap, HashSet};
+
 use betting_game_data::{Data, GameId, Offer, Package, PackageId, TeamId};
 use fehler::throws;
+use fixedbitset::FixedBitSet;
 use itertools::Itertools;
 use serde::Serialize;
 
@@ -54,19 +57,23 @@ fn find_best_combination(game_ids: &[GameId], data: &Data) -> Combination {
         .cloned()
         .collect();
 
-    let filtered_game_ids: Vec<GameId> =
-        filtered_offers.iter().map(|o| o.game_id).unique().collect();
+    let filtered_game_ids: Vec<GameId> = filtered_offers
+        .iter()
+        .map(|o| o.game_id)
+        .collect::<HashSet<_>>()
+        .into_iter()
+        .collect();
 
     let packages: Vec<Package> = filtered_offers
         .iter()
         .map(|o| o.package_id)
-        .unique()
+        .collect::<HashSet<_>>()
+        .into_iter()
         .map(|p_id| &data.packages[p_id])
         .cloned()
         .collect();
 
-    let best_package_ids =
-        find_best_packages_exhaustive(filtered_game_ids, filtered_offers, packages);
+    let best_package_ids = find_best_packages_greedy(filtered_game_ids, filtered_offers, packages);
 
     return Combination::new(&best_package_ids, game_ids, data);
 }
@@ -76,47 +83,80 @@ fn find_best_packages_greedy(
     offers: Vec<Offer>,
     packages: Vec<Package>,
 ) -> Vec<PackageId> {
-    let mut remaining_game_ids = game_ids;
-    let mut remaining_offers = offers;
-    let mut remaining_packages = packages;
+    // println!("{}", game_ids.len());
 
-    let mut result_package_ids = vec![];
+    let mut covered_games_map = FixedBitSet::with_capacity(game_ids.len());
 
-    while !remaining_game_ids.is_empty() && !remaining_packages.is_empty() {
-        let best_package_id = remaining_packages
-            .iter()
-            .min_by(|p1, p2| {
-                let p1_coverage = remaining_offers
-                    .iter()
-                    .filter(|o| o.package_id == p1.id)
-                    .count();
-                let p2_coverage = remaining_offers
-                    .iter()
-                    .filter(|o| o.package_id == p2.id)
-                    .count();
+    let game_id_to_index: HashMap<_, _> = game_ids
+        .iter()
+        .enumerate()
+        .map(|(i, id)| (*id, i))
+        .collect();
 
-                p2_coverage.cmp(&p1_coverage).then(
-                    p1.monthly_price_yearly_subscription_in_cents
-                        .cmp(&p2.monthly_price_yearly_subscription_in_cents),
-                )
-            })
-            .unwrap()
-            .id;
-
-        let covered_game_ids: Vec<_> = remaining_offers
-            .iter()
-            .filter(|o| o.package_id == best_package_id)
-            .map(|o| o.game_id)
-            .collect();
-
-        remaining_game_ids.retain(|g| !covered_game_ids.contains(g));
-        remaining_offers.retain(|o| remaining_game_ids.contains(&o.game_id));
-        remaining_packages.retain(|p| p.id != best_package_id);
-
-        result_package_ids.push(best_package_id);
+    // Create a lookup map for package offers
+    let mut offer_by_package: HashMap<PackageId, Vec<usize>> = HashMap::new();
+    for offer in &offers {
+        if let Some(&game_index) = game_id_to_index.get(&offer.game_id) {
+            offer_by_package
+                .entry(offer.package_id)
+                .or_default()
+                .push(game_index);
+        }
     }
 
-    result_package_ids
+    // Create the coverage maps
+    let package_coverages: Vec<FixedBitSet> = packages
+        .iter()
+        .map(|p| {
+            let mut package_coverage_map = FixedBitSet::with_capacity(game_ids.len());
+            if let Some(indices) = offer_by_package.get(&p.id) {
+                for &index in indices {
+                    package_coverage_map.set(index, true);
+                }
+            }
+            package_coverage_map
+        })
+        .collect();
+
+    let package_prices: Vec<u32> = packages
+        .iter()
+        .map(|p| p.monthly_price_yearly_subscription_in_cents)
+        .collect();
+
+    let mut best_package_ids = vec![];
+
+    while !covered_games_map.is_full() {
+        let (best_package_index, best_coverage) = package_coverages
+            .iter()
+            .enumerate()
+            .max_by_key(|(index, cov_map)| {
+                (
+                    cov_map.difference_count(&covered_games_map),
+                    std::cmp::Reverse(package_prices[*index]),
+                )
+            })
+            // .max_by(|(index1, cov_map1), (index2, cov_map2)| {
+            //     let count1 = cov_map1.difference_count(&covered_games_map);
+            //     let count2 = cov_map2.difference_count(&covered_games_map);
+            //     count1
+            //         .cmp(&count2)
+            //         .then(package_prices[*index2].cmp(&package_prices[*index1]))
+            //     // Note: reversed price comparison
+            // })
+            // .min_by(|(index1, cov_map1), (index2, cov_map2)| {
+            //     let count1 = cov_map1.difference_count(&covered_games_map);
+            //     let count2 = cov_map2.difference_count(&covered_games_map);
+            //     count2
+            //         .cmp(&count1) // Note: reversed comparison
+            //         .then(package_prices[*index1].cmp(&package_prices[*index2]))
+            // })
+            .unwrap();
+
+        best_package_ids.push(packages[best_package_index].id);
+        covered_games_map.union_with(best_coverage);
+    }
+
+    best_package_ids
 }
 
 fn find_best_packages_exhaustive(
@@ -124,47 +164,20 @@ fn find_best_packages_exhaustive(
     offers: Vec<Offer>,
     packages: Vec<Package>,
 ) -> Vec<PackageId> {
-    let mut remaining_game_ids = game_ids;
-    let mut remaining_offers = offers;
-    let mut remaining_packages = packages;
+    let mut best_package_ids =
+        find_best_packages_greedy(game_ids.clone(), offers.clone(), packages.clone());
+    let mut best_total_price: u32 = best_package_ids
+        .iter()
+        .map(|p_id| {
+            packages
+                .iter()
+                .find(|p| p.id == *p_id)
+                .unwrap()
+                .monthly_price_yearly_subscription_in_cents
+        })
+        .sum();
 
-    let mut result_package_ids = vec![];
-
-    while !remaining_game_ids.is_empty() && !remaining_packages.is_empty() {
-        let best_package_id = remaining_packages
-            .iter()
-            .min_by(|p1, p2| {
-                let p1_coverage = remaining_offers
-                    .iter()
-                    .filter(|o| o.package_id == p1.id)
-                    .count();
-                let p2_coverage = remaining_offers
-                    .iter()
-                    .filter(|o| o.package_id == p2.id)
-                    .count();
-
-                p2_coverage.cmp(&p1_coverage).then(
-                    p1.monthly_price_yearly_subscription_in_cents
-                        .cmp(&p2.monthly_price_yearly_subscription_in_cents),
-                )
-            })
-            .unwrap()
-            .id;
-
-        let covered_game_ids: Vec<_> = remaining_offers
-            .iter()
-            .filter(|o| o.package_id == best_package_id)
-            .map(|o| o.game_id)
-            .collect();
-
-        remaining_game_ids.retain(|g| !covered_game_ids.contains(g));
-        remaining_offers.retain(|o| remaining_game_ids.contains(&o.game_id));
-        remaining_packages.retain(|p| p.id != best_package_id);
-
-        result_package_ids.push(best_package_id);
-    }
-
-    result_package_ids
+    best_package_ids
 }
 
 #[derive(Serialize)]
@@ -199,9 +212,16 @@ async fn fetch_combinations(
         .map(|p| Combination::new(&[p.id], &filtered_game_ids, state.inner()))
         .collect();
 
+    let best_combination = find_best_combination(&filtered_game_ids, state.inner());
+    let game_count = filtered_game_ids.len() as u16;
+    assert!(
+        best_combination.total_coverage <= game_count,
+        "This is impossible, rethink your life!"
+    );
+
     FetchCombinationsResponse {
         game_count: filtered_game_ids.len() as u16,
-        best_combination: find_best_combination(&filtered_game_ids, state.inner()),
+        best_combination,
         single_combinations: single_combis,
     }
 }
