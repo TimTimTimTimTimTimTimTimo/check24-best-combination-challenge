@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use betting_game_data::Data;
+use best_combination_data::Data;
 use clap::Parser;
 use fehler::throws;
 

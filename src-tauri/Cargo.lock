@@ -181,13 +181,14 @@ name = "best-combination"
 version = "0.1.0"
 dependencies = [
  "anyhow",
- "betting-game-data",
+ "best-combination-data",
  "chrono",
  "fehler",
  "fixedbitset",
  "index_vec",
  "insta",
  "itertools",
+ "rustc-hash",
  "serde",
  "smol_str",
  "tango-bench",
@@ -196,7 +197,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "betting-game-data"
+name = "best-combination-data"
 version = "0.1.0"
 dependencies = [
  "anyhow",
@@ -3001,6 +3002,12 @@ name = "rustc-demangle"
 version = "0.1.24"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "719b953e2095829ee67db738b3bfa9fa368c94900df327b3f07fe6e794d2fe1f"
+
+[[package]]
+name = "rustc-hash"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c7fb8039b3032c191086b10f11f319a6e99e1e82889c5cc6046f515c9db1d497"
 
 [[package]]
 name = "rustc_version"

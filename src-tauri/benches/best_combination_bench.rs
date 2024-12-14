@@ -1,10 +1,10 @@
 use std::hint::black_box;
 
+use best_combination_data::Data;
 use best_combination_lib::{
     best_combination_all, best_combination_multi_1, best_combination_multi_2,
     best_combination_single, load_data,
 };
-use betting_game_data::Data;
 use tango_bench::*;
 
 fn best_combination_benchmarks() -> impl IntoBenchmarks {

@@ -37,10 +37,10 @@ fn test_best_combination_all() {
       - 35
       - 17
       - 24
-      - 1
-    live_coverage: 5255
-    highlights_coverage: 7226
-    total_coverage: 7226
+      - 8
+    live_coverage: 5272
+    highlights_coverage: 6560
+    total_coverage: 6594
     total_price: 8192
     "###);
 }

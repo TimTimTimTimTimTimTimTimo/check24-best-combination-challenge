@@ -1,9 +1,8 @@
-use std::collections::{HashMap, HashSet};
-
-use betting_game_data::{Data, GameId, Offer, Package, PackageId, TeamId};
+use best_combination_data::{Data, GameId, Offer, Package, PackageId, TeamId};
 use fehler::throws;
 use fixedbitset::FixedBitSet;
 use itertools::Itertools;
+use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
 
 #[derive(Serialize, Default)]
@@ -21,10 +20,7 @@ impl Combination {
             .offers
             .iter()
             .filter(|offer| {
-                package_ids
-                    .iter()
-                    .any(|&package_id| package_id == offer.package_id)
-                    && game_ids.iter().any(|&g_id| g_id == offer.game_id)
+                package_ids.contains(&offer.package_id) && game_ids.contains(&offer.game_id)
             })
             .fold((0, 0, 0), |(acc_live, acc_high, acc_total), offer| {
                 (
@@ -57,25 +53,18 @@ fn find_best_combination(game_ids: &[GameId], data: &Data) -> Combination {
         .cloned()
         .collect();
 
-    let filtered_game_ids: Vec<GameId> = filtered_offers
-        .iter()
-        .map(|o| o.game_id)
-        .collect::<HashSet<_>>()
-        .into_iter()
-        .collect();
-
     let packages: Vec<Package> = filtered_offers
         .iter()
         .map(|o| o.package_id)
-        .collect::<HashSet<_>>()
+        .collect::<FxHashSet<_>>()
         .into_iter()
         .map(|p_id| &data.packages[p_id])
         .cloned()
         .collect();
 
-    let best_package_ids = find_best_packages_greedy(filtered_game_ids, filtered_offers, packages);
+    let best_package_ids = find_best_packages_greedy(game_ids.to_vec(), filtered_offers, packages);
 
-    return Combination::new(&best_package_ids, game_ids, data);
+    return Combination::new(&best_package_ids, &game_ids, data);
 }
 
 fn find_best_packages_greedy(
@@ -83,18 +72,14 @@ fn find_best_packages_greedy(
     offers: Vec<Offer>,
     packages: Vec<Package>,
 ) -> Vec<PackageId> {
-    // println!("{}", game_ids.len());
-
-    let mut covered_games_map = FixedBitSet::with_capacity(game_ids.len());
-
-    let game_id_to_index: HashMap<_, _> = game_ids
+    let game_id_to_index: FxHashMap<_, _> = game_ids
         .iter()
         .enumerate()
         .map(|(i, id)| (*id, i))
         .collect();
 
     // Create a lookup map for package offers
-    let mut offer_by_package: HashMap<PackageId, Vec<usize>> = HashMap::new();
+    let mut offer_by_package: FxHashMap<PackageId, Vec<usize>> = FxHashMap::default();
     for offer in &offers {
         if let Some(&game_index) = game_id_to_index.get(&offer.game_id) {
             offer_by_package
@@ -124,9 +109,14 @@ fn find_best_packages_greedy(
         .collect();
 
     let mut best_package_ids = vec![];
-
-    while !covered_games_map.is_full() {
-        let (best_package_index, best_coverage) = package_coverages
+    let mut covered_games_map = FixedBitSet::with_capacity(game_ids.len());
+    for _ in 0..packages.len() {
+        if covered_games_map.is_full() {
+            break;
+        }
+        // dbg!(&covered_games_map);
+        // dbg!(&covered_games_map.count_ones(..));
+        let (best_package_index, best_coverage_map) = package_coverages
             .iter()
             .enumerate()
             .max_by_key(|(index, cov_map)| {
@@ -135,25 +125,10 @@ fn find_best_packages_greedy(
                     std::cmp::Reverse(package_prices[*index]),
                 )
             })
-            // .max_by(|(index1, cov_map1), (index2, cov_map2)| {
-            //     let count1 = cov_map1.difference_count(&covered_games_map);
-            //     let count2 = cov_map2.difference_count(&covered_games_map);
-            //     count1
-            //         .cmp(&count2)
-            //         .then(package_prices[*index2].cmp(&package_prices[*index1]))
-            //     // Note: reversed price comparison
-            // })
-            // .min_by(|(index1, cov_map1), (index2, cov_map2)| {
-            //     let count1 = cov_map1.difference_count(&covered_games_map);
-            //     let count2 = cov_map2.difference_count(&covered_games_map);
-            //     count2
-            //         .cmp(&count1) // Note: reversed comparison
-            //         .then(package_prices[*index1].cmp(&package_prices[*index2]))
-            // })
             .unwrap();
 
         best_package_ids.push(packages[best_package_index].id);
-        covered_games_map.union_with(best_coverage);
+        covered_games_map.union_with(best_coverage_map);
     }
 
     best_package_ids
@@ -164,25 +139,13 @@ fn find_best_packages_exhaustive(
     offers: Vec<Offer>,
     packages: Vec<Package>,
 ) -> Vec<PackageId> {
-    let mut best_package_ids =
-        find_best_packages_greedy(game_ids.clone(), offers.clone(), packages.clone());
-    let mut best_total_price: u32 = best_package_ids
-        .iter()
-        .map(|p_id| {
-            packages
-                .iter()
-                .find(|p| p.id == *p_id)
-                .unwrap()
-                .monthly_price_yearly_subscription_in_cents
-        })
-        .sum();
-
-    best_package_ids
+    todo!()
 }
 
 #[derive(Serialize)]
 struct FetchCombinationsResponse {
     game_count: u16,
+    orphan_count: u16,
     best_combination: Combination,
     single_combinations: Vec<Combination>,
 }
@@ -204,7 +167,11 @@ async fn fetch_combinations(
         .map(|g| g.id)
         .collect();
 
-    // println!("{:?}", filtered_game_ids);
+    let orphan_count = state
+        .orphan_games
+        .iter()
+        .filter(|g| team_ids.contains(&g.team_away_id) || team_ids.contains(&g.team_home_id))
+        .count() as u16;
 
     let single_combis: Vec<Combination> = state
         .packages
@@ -216,11 +183,14 @@ async fn fetch_combinations(
     let game_count = filtered_game_ids.len() as u16;
     assert!(
         best_combination.total_coverage <= game_count,
-        "This is impossible, rethink your life!"
+        "This is impossible, rethink your life! coverage: {}, count: {}",
+        best_combination.total_coverage,
+        game_count
     );
 
     FetchCombinationsResponse {
         game_count: filtered_game_ids.len() as u16,
+        orphan_count,
         best_combination,
         single_combinations: single_combis,
     }
@@ -245,12 +215,13 @@ pub fn load_data() -> Data {
 
 // Bayern München
 pub fn best_combination_single(data: &Data) -> Combination {
+    // this is all prefiltered. should find a good way to get this at comptime
     let game_ids: Vec<GameId> = vec![
         51, 68, 75, 78, 88, 102, 112, 120, 124, 138, 145, 150, 160, 170, 185, 192, 195, 211, 213,
-        218, 224, 239, 250, 256, 260, 271, 283, 292, 301, 306, 319, 324, 336, 348, 355, 5301, 5316,
-        5321, 5326, 5337, 5345, 5360, 5363, 5379, 5382, 5390, 5400, 5412, 5418, 5432, 5436, 5445,
-        5455, 5463, 5470, 5479, 5488, 5497, 5507, 5521, 5525, 5537, 5544, 5553, 5562, 5569, 5580,
-        5589, 7349, 7885, 8434, 8460, 8480, 8497, 8508, 8527, 8554, 8562, 8839,
+        218, 224, 239, 250, 256, 260, 271, 283, 292, 301, 306, 319, 324, 336, 348, 355, 3672, 3687,
+        3692, 3697, 3708, 3716, 3731, 3734, 3750, 3753, 3761, 3771, 3783, 3789, 3803, 3807, 3816,
+        3826, 3834, 3841, 3850, 3859, 3868, 3878, 3892, 3896, 3908, 3915, 3924, 3933, 3940, 3951,
+        3960, 5405, 5466, 5505, 5531, 5551, 5568, 5579, 5619, 5627, 5652,
     ]
     .into_iter()
     .map(GameId::from)
@@ -264,18 +235,18 @@ pub fn best_combination_multi_1(data: &Data) -> Combination {
     let game_ids: Vec<GameId> = vec![
         0, 13, 24, 37, 44, 51, 68, 75, 78, 88, 102, 112, 120, 124, 138, 145, 150, 160, 170, 185,
         192, 195, 211, 213, 218, 224, 239, 250, 256, 260, 271, 283, 292, 301, 306, 319, 324, 336,
-        348, 355, 1120, 1131, 1142, 1155, 1166, 1177, 1187, 1189, 1199, 1210, 1222, 1235, 1245,
-        1252, 1265, 1271, 1280, 1292, 1298, 1316, 1326, 1334, 1343, 1351, 1365, 1369, 1387, 1395,
-        1407, 1409, 1422, 1431, 1443, 1454, 1459, 1475, 1484, 1490, 1598, 1616, 2566, 2575, 2589,
-        2600, 2610, 2621, 2627, 2644, 2653, 2656, 2668, 2681, 2686, 2696, 2712, 2717, 2735, 2744,
-        2749, 2760, 2766, 2776, 2786, 2797, 2806, 2823, 2828, 2839, 2849, 2861, 2874, 2877, 2892,
-        2902, 2909, 2922, 2932, 2938, 2955, 4217, 4220, 4222, 5301, 5316, 5321, 5326, 5337, 5345,
-        5360, 5363, 5379, 5382, 5390, 5400, 5412, 5418, 5432, 5436, 5445, 5455, 5463, 5470, 5479,
-        5488, 5497, 5507, 5521, 5525, 5537, 5544, 5553, 5562, 5569, 5580, 5589, 6987, 6993, 7007,
-        7016, 7024, 7036, 7047, 7055, 7066, 7076, 7087, 7096, 7103, 7117, 7125, 7132, 7137, 7148,
-        7158, 7164, 7178, 7187, 7195, 7207, 7218, 7226, 7237, 7247, 7258, 7267, 7274, 7288, 7296,
-        7303, 7308, 7319, 7349, 7885, 8413, 8434, 8435, 8460, 8463, 8474, 8480, 8492, 8497, 8508,
-        8519, 8523, 8527, 8554, 8556, 8562, 8573, 8839,
+        348, 355, 929, 940, 951, 964, 975, 986, 996, 998, 1008, 1019, 1031, 1044, 1054, 1061, 1074,
+        1080, 1089, 1101, 1107, 1125, 1135, 1143, 1152, 1160, 1174, 1178, 1196, 1204, 1216, 1218,
+        1231, 1240, 1252, 1263, 1268, 1284, 1293, 1299, 1738, 1747, 1761, 1772, 1782, 1793, 1799,
+        1816, 1825, 1828, 1840, 1853, 1858, 1868, 1884, 1889, 1907, 1916, 1921, 1932, 1938, 1948,
+        1958, 1969, 1978, 1995, 2000, 2011, 2021, 2033, 2046, 2049, 2064, 2074, 2081, 2094, 2104,
+        2110, 2127, 2623, 2626, 2628, 3672, 3687, 3692, 3697, 3708, 3716, 3731, 3734, 3750, 3753,
+        3761, 3771, 3783, 3789, 3803, 3807, 3816, 3826, 3834, 3841, 3850, 3859, 3868, 3878, 3892,
+        3896, 3908, 3915, 3924, 3933, 3940, 3951, 3960, 5052, 5058, 5072, 5081, 5089, 5101, 5112,
+        5120, 5131, 5141, 5152, 5161, 5168, 5182, 5190, 5197, 5202, 5213, 5223, 5229, 5243, 5252,
+        5260, 5272, 5283, 5291, 5302, 5312, 5323, 5332, 5339, 5353, 5361, 5368, 5373, 5384, 5405,
+        5466, 5501, 5505, 5506, 5531, 5534, 5545, 5551, 5563, 5568, 5579, 5590, 5594, 5619, 5621,
+        5627, 5638, 5652,
     ]
     .into_iter()
     .map(GameId::from)
@@ -294,15 +265,14 @@ pub fn best_combination_all(data: &Data) -> Combination {
 // Oxford United, Los Angeles FC, AS Rom
 pub fn best_combination_multi_2(data: &Data) -> Combination {
     let game_ids: Vec<GameId> = vec![
-        891, 932, 954, 1055, 1630, 1638, 1647, 1663, 1675, 1685, 1692, 1704, 1709, 1722, 1732,
-        1744, 1752, 1763, 1773, 1783, 1795, 1805, 1815, 1823, 1827, 1842, 1852, 1855, 1872, 1883,
-        1889, 1905, 1915, 1925, 1929, 1943, 1955, 1964, 1974, 1984, 1994, 2003, 2042, 2045, 3724,
-        3738, 3760, 3774, 3789, 3793, 3812, 3820, 3844, 3861, 3867, 3888, 3899, 3917, 3943, 3955,
-        3968, 3982, 4000, 4013, 4029, 4038, 4055, 4068, 4085, 4087, 4110, 4131, 4143, 4152, 4161,
-        4184, 4196, 4213, 5145, 5597, 5613, 5620, 5630, 5644, 5653, 5663, 5674, 5678, 5694, 5698,
-        5714, 5722, 5733, 5744, 5748, 5763, 5772, 5783, 5786, 5805, 5814, 5824, 5835, 5844, 5853,
-        5864, 5868, 5882, 5893, 5904, 5912, 5924, 5930, 5944, 5946, 5965, 5973, 8282, 8410, 8587,
-        8607, 8613, 8638, 8664, 8666, 8685, 8702,
+        793, 834, 856, 1311, 1319, 1328, 1344, 1356, 1366, 1373, 1385, 1390, 1403, 1413, 1425,
+        1433, 1444, 1454, 1464, 1476, 1486, 1496, 1504, 1508, 1523, 1533, 1536, 1553, 1564, 1570,
+        1586, 1596, 1606, 1610, 1624, 1636, 1645, 1655, 1665, 1675, 1684, 1723, 1726, 2130, 2144,
+        2166, 2180, 2195, 2199, 2218, 2226, 2250, 2267, 2273, 2294, 2305, 2323, 2349, 2361, 2374,
+        2388, 2406, 2419, 2435, 2444, 2461, 2474, 2491, 2493, 2516, 2537, 2549, 2558, 2567, 2590,
+        2602, 2619, 3968, 3984, 3991, 4001, 4015, 4024, 4034, 4045, 4049, 4065, 4069, 4085, 4093,
+        4104, 4115, 4119, 4134, 4143, 4154, 4157, 4176, 4185, 4195, 4206, 4215, 4224, 4235, 4239,
+        4253, 4264, 4275, 4283, 4295, 4301, 4315, 4317, 4336, 4344, 5498,
     ]
     .into_iter()
     .map(GameId::from)

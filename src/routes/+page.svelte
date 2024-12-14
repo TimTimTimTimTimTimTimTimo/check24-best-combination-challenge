@@ -23,6 +23,7 @@
 
     type FetchCombinationsResponse = {
         game_count: number;
+        orphan_count: number;
         best_combination: Combination;
         single_combinations: Combination[];
     };
@@ -129,8 +130,12 @@
     </form>
     <br />
     {#if combiResponse}
-        {@const { game_count, best_combination, single_combinations } =
-            combiResponse}
+        {@const {
+            game_count,
+            orphan_count,
+            best_combination,
+            single_combinations,
+        } = combiResponse}
         <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
             <Carousel.Content>
                 {@render CombinationCard(
@@ -138,10 +143,16 @@
                         ? "Beste Kombination!"
                         : "Bestes Paket!",
                     game_count,
+                    orphan_count,
                     best_combination,
                 )}
                 {#each single_combinations as combi, i (i)}
-                    {@render CombinationCard(i.toString(), game_count, combi)}
+                    {@render CombinationCard(
+                        i.toString(),
+                        game_count,
+                        orphan_count,
+                        combi,
+                    )}
                 {/each}
             </Carousel.Content>
             <Carousel.Previous />
@@ -152,8 +163,13 @@
     {/if}
 </main>
 
-{#snippet CombinationCard(name: string, game_count: number, combi: Combination)}
-    <Carousel.Item class="md:basis-1/3 lg:basis-1/6 h-96">
+{#snippet CombinationCard(
+    name: string,
+    game_count: number,
+    orphan_count: number,
+    combi: Combination,
+)}
+    <Carousel.Item class="md:basis-1/3 lg:basis-1/6">
         <Card.Root class="hover:shadow">
             <Card.Header class="h-32">
                 <Card.Title
@@ -169,7 +185,12 @@
             </Card.Header>
             <Card.Content>
                 <Separator class="my-4" />
-                <div>Von {game_count} Spielen:</div>
+                {#if orphan_count > 0}
+                    <div>
+                        Für {orphan_count} Spiele gibt es kein Streaming Angebot!
+                    </div>
+                {/if}
+                <div>Von {game_count} streambaren Spielen:</div>
                 <div>
                     {combi.total_coverage} Gesamt
                 </div>

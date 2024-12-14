@@ -8,7 +8,7 @@ use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
-#[derive(Debug, Deserialize)]
+#[derive(Debug, Deserialize, Clone)]
 struct GameToken {
     id: u16,
     team_home: SmolStr,
@@ -120,6 +120,7 @@ pub struct Data {
     pub teams: IndexVec<TeamId, Team>,
     pub tournaments: IndexVec<TournamentId, Tournament>,
     pub games: IndexVec<GameId, Game>,
+    pub orphan_games: IndexVec<GameId, Game>,
     pub offers: IndexVec<OfferId, Offer>,
     pub packages: IndexVec<PackageId, Package>,
 }
@@ -127,8 +128,12 @@ pub struct Data {
 impl Data {
     #[throws(anyhow::Error)]
     pub fn load_from_csv(games_path: &Path, offers_path: &Path, packages_path: &Path) -> Data {
-        let game_tokens = GameToken::parse_items_from_csv(games_path)?;
         let offer_tokens = OfferToken::parse_items_from_csv(offers_path)?;
+        let (game_tokens, orphan_game_tokens): (Vec<GameToken>, Vec<GameToken>) =
+            GameToken::parse_items_from_csv(games_path)?
+                .iter()
+                .cloned()
+                .partition(|gt| offer_tokens.iter().any(|ot| ot.game_id == gt.id));
         let package_tokens = PackageToken::parse_items_from_csv(packages_path)?;
 
         let offers = offer_tokens
@@ -163,6 +168,7 @@ impl Data {
 
             game_tokens
                 .iter()
+                .chain(orphan_game_tokens.iter())
                 .flat_map(|game| [Team(game.team_home.clone()), Team(game.team_away.clone())])
                 .for_each(|team| match team_map.get_mut(&team) {
                     Some(count) => *count += 1,
@@ -175,20 +181,47 @@ impl Data {
 
             team_map
                 .into_iter()
-                .sorted_by_key(|&(_, count)| count)
-                .rev()
+                .sorted_by_key(|&(_, count)| std::cmp::Reverse(count))
                 .map(|(team, _)| team)
                 .collect()
         };
 
         let tournaments: IndexVec<TournamentId, Tournament> = game_tokens
             .iter()
+            .chain(orphan_game_tokens.iter())
             .map(|g| g.tournament_name.clone())
             .unique()
             .map(|s| Tournament(s))
             .collect();
 
         let games = game_tokens
+            .into_iter()
+            .enumerate()
+            .map(|(index, gt)| Game {
+                id: GameId::new(index),
+                team_home_id: TeamId::new(
+                    teams
+                        .iter()
+                        .position(|t| *t.0 == gt.team_home)
+                        .expect("team was not found."),
+                ),
+                team_away_id: TeamId::new(
+                    teams
+                        .iter()
+                        .position(|t| *t.0 == gt.team_away)
+                        .expect("team was not found."),
+                ),
+                starts_at: gt.starts_at,
+                tournament_id: TournamentId::new(
+                    tournaments
+                        .iter()
+                        .position(|t| *t.0 == gt.tournament_name)
+                        .expect("tournament was not found."),
+                ),
+            })
+            .collect();
+
+        let orphan_games = orphan_game_tokens
             .into_iter()
             .enumerate()
             .map(|(index, gt)| Game {
@@ -231,6 +264,7 @@ impl Data {
             teams,
             tournaments,
             games,
+            orphan_games,
             offers,
             packages,
         }
