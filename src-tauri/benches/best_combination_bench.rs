@@ -10,7 +10,7 @@ use tango_bench::*;
 fn best_combination_benchmarks() -> impl IntoBenchmarks {
     let data: &'static Data = Box::leak(Box::new(load_data()));
 
-    return [
+    [
         benchmark_fn("benchmark_single", |b| {
             b.iter(|| best_combination_single(black_box(data)))
         }),
@@ -23,7 +23,7 @@ fn best_combination_benchmarks() -> impl IntoBenchmarks {
         benchmark_fn("benchmark_multi_2", |b| {
             b.iter(|| best_combination_multi_2(black_box(data)))
         }),
-    ];
+    ]
 }
 
 tango_benchmarks!(best_combination_benchmarks());
