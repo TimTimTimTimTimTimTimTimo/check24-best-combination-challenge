@@ -121,11 +121,11 @@ fn calculate_coverages(maps: &[u64]) -> [u16; 64] {
     // The vectors are then summed up to represent coverage information for each package.
     let mut map_chunk = u16x16::splat(0);
     for map in maps {
-        for i in 0..vectors.len() {
+        for (i, vector) in vectors.iter_mut().enumerate() {
             for j in 0..16 {
                 map_chunk.as_array_mut()[j] = map.get_bit(i * 16 + j) as u16;
             }
-            vectors[i] += map_chunk
+            *vector += map_chunk
         }
     }
 
