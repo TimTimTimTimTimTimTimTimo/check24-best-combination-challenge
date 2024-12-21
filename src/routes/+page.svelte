@@ -17,7 +17,13 @@
         teams,
         type Team,
     } from "$lib/generated_types";
-    import type { Combination, Game, Offer } from "$lib/types";
+    import type {
+        Combination,
+        CombinationProperties,
+        Game,
+        Offer,
+    } from "$lib/types";
+    import { fade } from "svelte/transition";
 
     let selectedTeamIds: Set<number> = $state(new SvelteSet());
 
@@ -25,15 +31,15 @@
         game_count: number;
         orphan_count: number;
         best_combination: Combination;
-        single_combinations: Combination[];
+        best_combination_properties: CombinationProperties;
     };
 
     let combiResponse: FetchCombinationsResponse | null = $state(null);
     let combiLoading = $state(false);
 
-    async function fetchCombinations() {
+    async function fetchCombinationsByTeams() {
         combiLoading = true;
-        combiResponse = await invoke("fetch_combinations", {
+        combiResponse = await invoke("fetch_combinations_by_teams", {
             team_ids: Array.from(selectedTeamIds),
         });
         combiLoading = false;
@@ -104,7 +110,7 @@
                                         selectedTeamIds.add(
                                             teams.findIndex((t) => t === team),
                                         );
-                                        fetchCombinations();
+                                        fetchCombinationsByTeams();
                                         teamCloseAndFocusTrigger();
                                     }}
                                 >
@@ -122,7 +128,7 @@
                 <Button
                     onclick={() => {
                         selectedTeamIds.delete(id);
-                        fetchCombinations();
+                        fetchCombinationsByTeams();
                     }}>{teams[id]} <X /></Button
                 >
             {/each}
@@ -134,30 +140,33 @@
             game_count,
             orphan_count,
             best_combination,
-            single_combinations,
+            best_combination_properties,
         } = combiResponse}
-        <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
-            <Carousel.Content>
-                {@render CombinationCard(
-                    best_combination.package_ids.length > 1
-                        ? "Beste Kombination!"
-                        : "Bestes Paket!",
-                    game_count,
-                    orphan_count,
-                    best_combination,
-                )}
-                {#each single_combinations as combi, i (i)}
+        <div class="contents" in:fade>
+            <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
+                <Carousel.Content>
                     {@render CombinationCard(
-                        i.toString(),
+                        best_combination.package_ids.length > 1
+                            ? "Beste Kombination!"
+                            : "Bestes Paket!",
                         game_count,
                         orphan_count,
-                        combi,
+                        best_combination,
+                        best_combination_properties,
                     )}
-                {/each}
-            </Carousel.Content>
-            <Carousel.Previous />
-            <Carousel.Next />
-        </Carousel.Root>
+                    <!-- {#each single_combinations as combi, i (i)}
+                        {@render CombinationCard(
+                            i.toString(),
+                            game_count,
+                            orphan_count,
+                            combi,
+                        )}
+                    {/each} -->
+                </Carousel.Content>
+                <Carousel.Previous />
+                <Carousel.Next />
+            </Carousel.Root>
+        </div>
     {:else}
         <div>Keine Teams ausgewählt.</div>
     {/if}
@@ -168,6 +177,7 @@
     game_count: number,
     orphan_count: number,
     combi: Combination,
+    combi_properties: CombinationProperties,
 )}
     <Carousel.Item class="md:basis-1/3 lg:basis-1/6">
         <Card.Root class="hover:shadow">
@@ -192,15 +202,15 @@
                 {/if}
                 <div>Von {game_count} streambaren Spielen:</div>
                 <div>
-                    {combi.total_coverage} Gesamt
+                    {combi_properties.total_coverage} Gesamt
                 </div>
-                <div>{combi.live_coverage} Live</div>
+                <div>{combi_properties.live_coverage} Live</div>
                 <div>
-                    {combi.highlights_coverage} Highlights
+                    {combi_properties.high_coverage} Highlights
                 </div>
                 <Separator class="my-4" />
                 <div>
-                    {(combi.total_price * 12) / 100}€ pro Jahr
+                    {(combi_properties.price * 12) / 100}€ pro Jahr
                 </div>
             </Card.Content>
         </Card.Root>

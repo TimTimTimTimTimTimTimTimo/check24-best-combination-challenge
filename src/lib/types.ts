@@ -24,8 +24,11 @@ export type Package = {
 
 export type Combination = {
   package_ids: number[];
+};
+
+export type CombinationProperties = {
   live_coverage: number;
-  highlights_coverage: number;
+  high_coverage: number;
   total_coverage: number;
-  total_price: number;
+  price: number;
 };

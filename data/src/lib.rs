@@ -3,7 +3,7 @@ use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 use chrono::NaiveDateTime;
 use derive_more::derive::Display;
 use fehler::throws;
-use index_vec::IndexVec;
+use index_vec::{IndexSlice, IndexVec};
 use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
@@ -72,17 +72,19 @@ pub struct Game {
     pub id: GameId,
     pub team_home_id: TeamId,
     pub team_away_id: TeamId,
-    pub starts_at: NaiveDateTime,
+    pub start_time: NaiveDateTime,
     pub tournament_id: TournamentId,
+    pub live_map: u64,
+    pub high_map: u64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Offer {
-    pub id: OfferId,
-    pub game_id: GameId,
-    pub package_id: PackageId,
-    pub live: bool,
-    pub highlights: bool,
+pub struct OrphanGame {
+    pub id: OrphanGameId,
+    pub team_home_id: TeamId,
+    pub team_away_id: TeamId,
+    pub start_time: NaiveDateTime,
+    pub tournament_id: TournamentId,
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -94,13 +96,36 @@ pub struct Package {
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone, Display, PartialEq, Eq, Hash)]
-pub struct Team(SmolStr);
+pub struct Team(pub SmolStr);
+
+impl Team {
+    fn get_id(&self, teams: &IndexSlice<TeamId, [Team]>) -> TeamId {
+        TeamId::new(
+            teams
+                .iter()
+                .position(|t| t == self)
+                .expect("Team not found"),
+        )
+    }
+}
 
 #[derive(Debug, Serialize, Deserialize, Clone, Display, PartialEq, Eq)]
-pub struct Tournament(SmolStr);
-
+pub struct Tournament(pub SmolStr);
+impl Tournament {
+    fn get_id(&self, tournaments: &IndexSlice<TournamentId, [Tournament]>) -> TournamentId {
+        TournamentId::new(
+            tournaments
+                .iter()
+                .position(|t| t == self)
+                .expect("Tournament not found"),
+        )
+    }
+}
 index_vec::define_index_type! {
     pub struct GameId = u16;
+}
+index_vec::define_index_type! {
+    pub struct OrphanGameId = u16;
 }
 index_vec::define_index_type! {
     pub struct OfferId = u16;
@@ -112,20 +137,66 @@ index_vec::define_index_type! {
     pub struct TeamId = u16;
 }
 index_vec::define_index_type! {
-    pub struct TournamentId = u16;
+    pub struct TournamentId = u8;
 }
 
 #[derive(Serialize, Deserialize)]
 pub struct Data {
+    /// Unique teams sorted descending by number of apperances in the games dataset.
     pub teams: IndexVec<TeamId, Team>,
+    /// Unique tournaments
     pub tournaments: IndexVec<TournamentId, Tournament>,
+    /// Games with streaming offers
     pub games: IndexVec<GameId, Game>,
-    pub orphan_games: IndexVec<GameId, Game>,
-    pub offers: IndexVec<OfferId, Offer>,
+    /// Games with no streaming offers
+    pub orphan_games: IndexVec<OrphanGameId, OrphanGame>,
     pub packages: IndexVec<PackageId, Package>,
 }
 
+fn collect_tournaments(
+    game_tokens: &[GameToken],
+    orphan_game_tokens: &[GameToken],
+) -> IndexVec<TournamentId, Tournament> {
+    game_tokens
+        .iter()
+        .chain(orphan_game_tokens.iter())
+        .map(|g| g.tournament_name.clone())
+        .unique()
+        .map(Tournament)
+        .collect()
+}
+
+pub trait CoverageMap {
+    fn set_bit(&mut self, index: usize, value: bool);
+    fn set_bits(&mut self, indices: &[usize], value: bool);
+    fn get_bit(&self, index: usize) -> bool;
+}
+
+impl CoverageMap for u64 {
+    #[inline]
+    fn set_bit(&mut self, index: usize, value: bool) {
+        assert!(index < 64);
+        *self = (*self & !(1u64 << index)) | ((value as u64) << index);
+    }
+
+    #[inline]
+    fn set_bits(&mut self, indices: &[usize], value: bool) {
+        let mask = indices.iter().fold(0u64, |acc, &index| {
+            assert!(index < 64);
+            acc | (1u64 << index)
+        });
+        *self = (*self & !mask) | (if value { mask } else { 0 });
+    }
+
+    #[inline]
+    fn get_bit(&self, index: usize) -> bool {
+        assert!(index < 64);
+        (*self & (1u64 << index)) != 0
+    }
+}
+
 impl Data {
+    /// Parse the data from the given paths, then process them into a denser format more suitable for calculating combinations.
     #[throws(anyhow::Error)]
     pub fn load_from_csv(games_path: &Path, offers_path: &Path, packages_path: &Path) -> Data {
         let offer_tokens = OfferToken::parse_items_from_csv(offers_path)?;
@@ -136,119 +207,54 @@ impl Data {
                 .partition(|gt| offer_tokens.iter().any(|ot| ot.game_id == gt.id));
         let package_tokens = PackageToken::parse_items_from_csv(packages_path)?;
 
-        let offers = offer_tokens
-            .iter()
-            .enumerate()
-            .map(|(i, ot)| {
-                let game_id = ot.game_id;
-                let package_id = ot.streaming_package_id;
+        let teams = collect_teams(&game_tokens, &orphan_game_tokens);
+        let tournaments = collect_tournaments(&game_tokens, &orphan_game_tokens);
 
-                let game_index = game_tokens
-                    .iter()
-                    .position(|gt| gt.id == game_id)
-                    .ok_or(anyhow::anyhow!("Game ID {game_id} not found"))?;
-                let package_index = package_tokens
-                    .iter()
-                    .position(|pt| pt.id == package_id)
-                    .ok_or(anyhow::anyhow!("Package ID {package_id} not found"))?;
-
-                Ok(Offer {
-                    id: OfferId::new(i),
-                    game_id: GameId::new(game_index),
-                    package_id: PackageId::new(package_index),
-                    live: ot.live,
-                    highlights: ot.highlights,
-                })
-            })
-            .collect::<Result<IndexVec<OfferId, Offer>, anyhow::Error>>()?;
-
-        // teams are sorted by how many games they have
-        let teams: IndexVec<TeamId, Team> = {
-            let mut team_map: HashMap<Team, u16> = HashMap::new();
-
-            game_tokens
-                .iter()
-                .chain(orphan_game_tokens.iter())
-                .flat_map(|game| [Team(game.team_home.clone()), Team(game.team_away.clone())])
-                .for_each(|team| match team_map.get_mut(&team) {
-                    Some(count) => *count += 1,
-                    None => {
-                        if let Some(_) = team_map.insert(team, 1) {
-                            unreachable!()
-                        }
-                    }
-                });
-
-            team_map
-                .into_iter()
-                .sorted_by_key(|&(_, count)| std::cmp::Reverse(count))
-                .map(|(team, _)| team)
-                .collect()
-        };
-
-        let tournaments: IndexVec<TournamentId, Tournament> = game_tokens
-            .iter()
-            .chain(orphan_game_tokens.iter())
-            .map(|g| g.tournament_name.clone())
-            .unique()
-            .map(|s| Tournament(s))
-            .collect();
-
-        let games = game_tokens
+        // Games are created from game_tokens
+        // while high and live map are generated using offer tokens
+        let games: IndexVec<GameId, Game> = game_tokens
             .into_iter()
             .enumerate()
-            .map(|(index, gt)| Game {
-                id: GameId::new(index),
-                team_home_id: TeamId::new(
-                    teams
-                        .iter()
-                        .position(|t| *t.0 == gt.team_home)
-                        .expect("team was not found."),
-                ),
-                team_away_id: TeamId::new(
-                    teams
-                        .iter()
-                        .position(|t| *t.0 == gt.team_away)
-                        .expect("team was not found."),
-                ),
-                starts_at: gt.starts_at,
-                tournament_id: TournamentId::new(
-                    tournaments
-                        .iter()
-                        .position(|t| *t.0 == gt.tournament_name)
-                        .expect("tournament was not found."),
-                ),
+            .map(|(index, gt)| {
+                let mut live_map = 0;
+                let mut high_map = 0;
+                offer_tokens
+                    .iter()
+                    .filter(|ot| ot.game_id == gt.id)
+                    .for_each(|ot| {
+                        let mapped_package_index = package_tokens
+                            .iter()
+                            .position(|pt| pt.id == ot.streaming_package_id)
+                            .unwrap();
+                        live_map.set_bit(mapped_package_index, ot.live);
+                        high_map.set_bit(mapped_package_index, ot.highlights);
+                    });
+
+                Game {
+                    id: GameId::new(index),
+                    team_home_id: Team(gt.team_home).get_id(&teams),
+                    team_away_id: Team(gt.team_away).get_id(&teams),
+                    start_time: gt.starts_at,
+                    tournament_id: Tournament(gt.tournament_name).get_id(&tournaments),
+                    live_map,
+                    high_map,
+                }
             })
             .collect();
 
-        let orphan_games = orphan_game_tokens
+        let orphan_games: IndexVec<OrphanGameId, OrphanGame> = orphan_game_tokens
             .into_iter()
             .enumerate()
-            .map(|(index, gt)| Game {
-                id: GameId::new(index),
-                team_home_id: TeamId::new(
-                    teams
-                        .iter()
-                        .position(|t| *t.0 == gt.team_home)
-                        .expect("team was not found."),
-                ),
-                team_away_id: TeamId::new(
-                    teams
-                        .iter()
-                        .position(|t| *t.0 == gt.team_away)
-                        .expect("team was not found."),
-                ),
-                starts_at: gt.starts_at,
-                tournament_id: TournamentId::new(
-                    tournaments
-                        .iter()
-                        .position(|t| *t.0 == gt.tournament_name)
-                        .expect("tournament was not found."),
-                ),
+            .map(|(index, gt)| OrphanGame {
+                id: OrphanGameId::new(index),
+                team_home_id: Team(gt.team_home).get_id(&teams),
+                team_away_id: Team(gt.team_away).get_id(&teams),
+                start_time: gt.starts_at,
+                tournament_id: Tournament(gt.tournament_name).get_id(&tournaments),
             })
             .collect();
 
-        let packages = package_tokens
+        let packages: IndexVec<PackageId, Package> = package_tokens
             .into_iter()
             .enumerate()
             .map(|(index, pt)| Package {
@@ -265,7 +271,6 @@ impl Data {
             tournaments,
             games,
             orphan_games,
-            offers,
             packages,
         }
     }
@@ -281,9 +286,10 @@ impl Data {
         bincode::deserialize(bytes)?
     }
 
+    /// Write a Typescript file which contains string literal enums for teams and tournaments, and all packages.
     #[throws(anyhow::Error)]
     pub fn write_ts_types(&self, path: &Path) {
-        use std::io::Write; // Ensure the Write trait is in scope
+        use std::io::Write;
 
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
@@ -337,4 +343,33 @@ impl Data {
                 .join(",")
         )?;
     }
+}
+
+fn collect_teams(
+    game_tokens: &[GameToken],
+    orphan_game_tokens: &[GameToken],
+) -> IndexVec<TeamId, Team> {
+    let teams: IndexVec<TeamId, Team> = {
+        let mut team_map: HashMap<Team, u16> = HashMap::new();
+
+        game_tokens
+            .iter()
+            .chain(orphan_game_tokens.iter())
+            .flat_map(|game| [Team(game.team_home.clone()), Team(game.team_away.clone())])
+            .for_each(|team| match team_map.get_mut(&team) {
+                Some(count) => *count += 1,
+                None => {
+                    if team_map.insert(team, 1).is_some() {
+                        unreachable!()
+                    }
+                }
+            });
+
+        team_map
+            .into_iter()
+            .sorted_by_key(|&(_, count)| std::cmp::Reverse(count))
+            .map(|(team, _)| team)
+            .collect()
+    };
+    teams
 }

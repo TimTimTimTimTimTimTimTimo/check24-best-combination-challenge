@@ -1,282 +1,279 @@
-use best_combination_data::{Data, GameId, Offer, Package, PackageId, TeamId};
+use std::ops::{BitAnd, BitOr};
+
+use best_combination_data::{CoverageMap, Data, Game, GameId, Package, PackageId, Team, TeamId};
 use fehler::throws;
-use fixedbitset::FixedBitSet;
 use itertools::Itertools;
-use rustc_hash::{FxHashMap, FxHashSet};
 use serde::Serialize;
-
-#[derive(Serialize, Default)]
-pub struct Combination {
-    package_ids: Vec<PackageId>,
-    live_coverage: u16,
-    highlights_coverage: u16,
-    total_coverage: u16,
-    total_price: u32,
-}
-
-impl Combination {
-    fn new(package_ids: &[PackageId], game_ids: &[GameId], data: &Data) -> Self {
-        let (live_coverage, highlights_coverage, total_coverage): (u16, u16, u16) = data
-            .offers
-            .iter()
-            .filter(|offer| {
-                package_ids.contains(&offer.package_id) && game_ids.contains(&offer.game_id)
-            })
-            .fold((0, 0, 0), |(acc_live, acc_high, acc_total), offer| {
-                (
-                    acc_live + if offer.live { 1 } else { 0 },
-                    acc_high + if offer.highlights { 1 } else { 0 },
-                    acc_total + 1,
-                )
-            });
-
-        let total_price: u32 = package_ids
-            .iter()
-            .map(|&p_id| data.packages[p_id].monthly_price_yearly_subscription_in_cents)
-            .sum();
-
-        Self {
-            package_ids: package_ids.to_vec(),
-            live_coverage,
-            highlights_coverage,
-            total_coverage,
-            total_price,
-        }
-    }
-}
-
-fn find_best_combination(game_ids: &[GameId], data: &Data) -> Combination {
-    let filtered_offers: Vec<Offer> = data
-        .offers
-        .iter()
-        .filter(|o| game_ids.contains(&o.game_id))
-        .cloned()
-        .collect();
-
-    let packages: Vec<Package> = filtered_offers
-        .iter()
-        .map(|o| o.package_id)
-        .collect::<FxHashSet<_>>()
-        .into_iter()
-        .map(|p_id| &data.packages[p_id])
-        .cloned()
-        .collect();
-
-    let best_package_ids = find_best_packages_greedy(game_ids.to_vec(), filtered_offers, packages);
-
-    return Combination::new(&best_package_ids, &game_ids, data);
-}
-
-fn find_best_packages_greedy(
-    game_ids: Vec<GameId>,
-    offers: Vec<Offer>,
-    packages: Vec<Package>,
-) -> Vec<PackageId> {
-    let game_id_to_index: FxHashMap<_, _> = game_ids
-        .iter()
-        .enumerate()
-        .map(|(i, id)| (*id, i))
-        .collect();
-
-    // Create a lookup map for package offers
-    let mut offer_by_package: FxHashMap<PackageId, Vec<usize>> = FxHashMap::default();
-    for offer in &offers {
-        if let Some(&game_index) = game_id_to_index.get(&offer.game_id) {
-            offer_by_package
-                .entry(offer.package_id)
-                .or_default()
-                .push(game_index);
-        }
-    }
-
-    // Create the coverage maps
-    let package_coverages: Vec<FixedBitSet> = packages
-        .iter()
-        .map(|p| {
-            let mut package_coverage_map = FixedBitSet::with_capacity(game_ids.len());
-            if let Some(indices) = offer_by_package.get(&p.id) {
-                for &index in indices {
-                    package_coverage_map.set(index, true);
-                }
-            }
-            package_coverage_map
-        })
-        .collect();
-
-    let package_prices: Vec<u32> = packages
-        .iter()
-        .map(|p| p.monthly_price_yearly_subscription_in_cents)
-        .collect();
-
-    let mut best_package_ids = vec![];
-    let mut covered_games_map = FixedBitSet::with_capacity(game_ids.len());
-    for _ in 0..packages.len() {
-        if covered_games_map.is_full() {
-            break;
-        }
-        // dbg!(&covered_games_map);
-        // dbg!(&covered_games_map.count_ones(..));
-        let (best_package_index, best_coverage_map) = package_coverages
-            .iter()
-            .enumerate()
-            .max_by_key(|(index, cov_map)| {
-                (
-                    cov_map.difference_count(&covered_games_map),
-                    std::cmp::Reverse(package_prices[*index]),
-                )
-            })
-            .unwrap();
-
-        best_package_ids.push(packages[best_package_index].id);
-        covered_games_map.union_with(best_coverage_map);
-    }
-
-    best_package_ids
-}
-
-fn find_best_packages_exhaustive(
-    game_ids: Vec<GameId>,
-    offers: Vec<Offer>,
-    packages: Vec<Package>,
-) -> Vec<PackageId> {
-    todo!()
-}
-
-#[derive(Serialize)]
-struct FetchCombinationsResponse {
-    game_count: u16,
-    orphan_count: u16,
-    best_combination: Combination,
-    single_combinations: Vec<Combination>,
-}
-
-#[throws(())]
-#[tauri::command(rename_all = "snake_case")]
-async fn fetch_combinations(
-    team_ids: Vec<TeamId>,
-    state: tauri::State<'_, Data>,
-) -> FetchCombinationsResponse {
-    let filtered_game_ids: Vec<GameId> = state
-        .games
-        .iter()
-        .filter(|game| {
-            team_ids
-                .iter()
-                .any(|&t_id| t_id == game.team_away_id || t_id == game.team_home_id)
-        })
-        .map(|g| g.id)
-        .collect();
-
-    let orphan_count = state
-        .orphan_games
-        .iter()
-        .filter(|g| team_ids.contains(&g.team_away_id) || team_ids.contains(&g.team_home_id))
-        .count() as u16;
-
-    let single_combis: Vec<Combination> = state
-        .packages
-        .iter()
-        .map(|p| Combination::new(&[p.id], &filtered_game_ids, state.inner()))
-        .collect();
-
-    let best_combination = find_best_combination(&filtered_game_ids, state.inner());
-    let game_count = filtered_game_ids.len() as u16;
-    assert!(
-        best_combination.total_coverage <= game_count,
-        "This is impossible, rethink your life! coverage: {}, count: {}",
-        best_combination.total_coverage,
-        game_count
-    );
-
-    FetchCombinationsResponse {
-        game_count: filtered_game_ids.len() as u16,
-        orphan_count,
-        best_combination,
-        single_combinations: single_combis,
-    }
-}
+use smol_str::ToSmolStr;
+use wide::u16x16;
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .manage::<Data>(load_data())
-        .invoke_handler(tauri::generate_handler![fetch_combinations])
+        .invoke_handler(tauri::generate_handler![fetch_combinations_by_teams])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
 
-pub fn load_data() -> Data {
-    let data_bin = include_bytes!("../betting_game.dat");
-    let data = Data::load_from_bin(data_bin).unwrap();
-    data
+#[derive(Serialize, Default)]
+pub struct Combination {
+    package_ids: Vec<PackageId>,
 }
 
+#[derive(Serialize, Default)]
+pub struct CombinationProperties {
+    live_coverage: u16,
+    high_coverage: u16,
+    total_coverage: u16,
+    price: u32,
+}
+
+impl Combination {
+    /// Calculate coverage data and price for a given combination.
+    fn calculate_properties(&self, maps: &MapsFromGames, data: &Data) -> CombinationProperties {
+        let MapsFromGames {
+            live_maps,
+            high_maps,
+            total_maps,
+        } = maps;
+
+        let mut package_map: u64 = 0;
+        for p_id in &self.package_ids {
+            package_map.set_bit(p_id.index(), true);
+        }
+
+        let live_coverage = live_maps
+            .iter()
+            .fold(0, |acc, map| acc + (map.bitand(package_map) != 0) as u16);
+
+        let high_coverage = high_maps
+            .iter()
+            .fold(0, |acc, map| acc + (map.bitand(package_map) != 0) as u16);
+
+        let total_coverage = total_maps
+            .iter()
+            .fold(0, |acc, map| acc + (map.bitand(package_map) != 0) as u16);
+
+        assert!(live_coverage <= total_coverage);
+        assert!(high_coverage <= total_coverage);
+        assert!(
+            total_coverage as usize <= live_maps.len(),
+            "total: {}, game_count: {}",
+            total_coverage,
+            live_maps.len()
+        );
+
+        let price: u32 = self
+            .package_ids
+            .iter()
+            .map(|&p_id| data.packages[p_id].monthly_price_yearly_subscription_in_cents)
+            .sum();
+
+        CombinationProperties {
+            live_coverage,
+            high_coverage,
+            total_coverage,
+            price,
+        }
+    }
+}
+
+/// Collects all live and highlight maps. Also generates total maps for the given games.
+fn collect_maps_from_games(games: &[&Game]) -> MapsFromGames {
+    debug_assert!(games.iter().map(|g| g.id).all_unique());
+
+    let mut live_maps: Vec<u64> = Vec::with_capacity(games.len());
+    let mut high_maps: Vec<u64> = Vec::with_capacity(games.len());
+    let mut total_maps: Vec<u64> = Vec::with_capacity(games.len());
+    for game in games {
+        live_maps.push(game.live_map);
+        high_maps.push(game.high_map);
+        total_maps.push(game.live_map.bitor(game.high_map));
+    }
+
+    assert!(live_maps.len() == high_maps.len() && high_maps.len() == total_maps.len());
+    MapsFromGames {
+        live_maps,
+        high_maps,
+        total_maps,
+    }
+}
+
+struct MapsFromGames {
+    live_maps: Vec<u64>,
+    high_maps: Vec<u64>,
+    total_maps: Vec<u64>,
+}
+
+/// Vertically sums up bits across the maps
+fn calculate_coverages(maps: &[u64]) -> [u16; 64] {
+    // Split across 4 vectors, as wide only support u16x16 vectors at max, but we need to have u16x64
+    let mut vectors = [
+        u16x16::splat(0),
+        u16x16::splat(0),
+        u16x16::splat(0),
+        u16x16::splat(0),
+    ];
+
+    // Coverage is calculated in 16 element chunks.
+    // For each chunk a chunk of the map is extracted/expanded into a vector.
+    // The vectors are then summed up to represent coverage information for each package.
+    let mut map_chunk = u16x16::splat(0);
+    for map in maps {
+        for i in 0..vectors.len() {
+            for j in 0..16 {
+                map_chunk.as_array_mut()[j] = map.get_bit(i * 16 + j) as u16;
+            }
+            vectors[i] += map_chunk
+        }
+    }
+
+    // Safe, as their internal memory represenations are the same. This prevents unnecessary allocations.
+    let result: [u16; 64] = unsafe { std::mem::transmute::<[u16x16; 4], [u16; 64]>(vectors) };
+    debug_assert!(result.iter().max().unwrap().to_owned() as usize <= maps.len());
+    result
+}
+
+#[derive(Serialize)]
+pub struct FetchCombinationsResponse {
+    game_count: u16,
+    orphan_count: u16,
+    best_combination: Combination,
+    best_combination_properties: CombinationProperties,
+}
+
+#[throws(())]
+#[tauri::command(rename_all = "snake_case")]
+async fn fetch_combinations_by_teams(
+    team_ids: Vec<TeamId>,
+    state: tauri::State<'_, Data>,
+) -> FetchCombinationsResponse {
+    fetch_combinations(state.inner(), |game| {
+        team_ids.contains(&game.team_home_id) || team_ids.contains(&game.team_away_id)
+    })
+}
+
+/// Filters games and orphans based on the filter predicate and then passes the games maps
+/// to find_best_combination_greedy or find_best_combination_exhaustive, based on their number.
+fn fetch_combinations<F: Fn(&Game) -> bool>(data: &Data, filter: F) -> FetchCombinationsResponse {
+    // TODO: this sucks, is ugly and probably wrong
+    let orphan_count = data
+        .orphan_games
+        .iter()
+        .filter(|orphan_game| {
+            filter(&Game {
+                id: GameId::new(orphan_game.id.into()),
+                team_home_id: orphan_game.team_home_id,
+                team_away_id: orphan_game.team_away_id,
+                start_time: orphan_game.start_time,
+                tournament_id: orphan_game.tournament_id,
+                live_map: 0,
+                high_map: 0,
+            })
+        })
+        .count() as u16;
+
+    let filtered_games: Vec<&Game> = data.games.iter().filter(|game| filter(game)).collect();
+
+    let maps = collect_maps_from_games(&filtered_games);
+
+    let best_combination = find_best_combination_greedy(&maps, &data.packages.raw);
+    let best_combination_properties = best_combination.calculate_properties(&maps, data);
+
+    FetchCombinationsResponse {
+        game_count: filtered_games.len() as u16,
+        orphan_count,
+        best_combination,
+        best_combination_properties,
+    }
+}
+
+fn find_best_combination_greedy(maps: &MapsFromGames, packages: &[Package]) -> Combination {
+    let mut package_prices: [u32; 64] = [0; 64];
+
+    for p in packages {
+        package_prices[p.id.index()] = p.monthly_price_yearly_subscription_in_cents
+    }
+
+    let mut package_ids = vec![];
+
+    let mut current_maps = maps.total_maps.clone();
+
+    for _ in 0..packages.len() {
+        let coverages = calculate_coverages(&current_maps);
+        let best_package_id: PackageId = coverages
+            .iter()
+            .enumerate()
+            .max_by_key(|(i, coverage)| (*coverage, std::cmp::Reverse(package_prices[*i])))
+            .unwrap()
+            .0
+            .into();
+
+        package_ids.push(best_package_id);
+        current_maps.retain(|map| !map.get_bit(best_package_id.index()));
+
+        if current_maps.is_empty() {
+            break;
+        }
+    }
+
+    Combination { package_ids }
+}
+
+pub fn load_data() -> Data {
+    let data_bin = include_bytes!("../betting_game.dat");
+    Data::load_from_bin(data_bin).unwrap()
+}
 // This is just used for testing and benchmarks. Should probably be in another file/module?
 
 // Bayern München
-pub fn best_combination_single(data: &Data) -> Combination {
-    // this is all prefiltered. should find a good way to get this at comptime
-    let game_ids: Vec<GameId> = vec![
-        51, 68, 75, 78, 88, 102, 112, 120, 124, 138, 145, 150, 160, 170, 185, 192, 195, 211, 213,
-        218, 224, 239, 250, 256, 260, 271, 283, 292, 301, 306, 319, 324, 336, 348, 355, 3672, 3687,
-        3692, 3697, 3708, 3716, 3731, 3734, 3750, 3753, 3761, 3771, 3783, 3789, 3803, 3807, 3816,
-        3826, 3834, 3841, 3850, 3859, 3868, 3878, 3892, 3896, 3908, 3915, 3924, 3933, 3940, 3951,
-        3960, 5405, 5466, 5505, 5531, 5551, 5568, 5579, 5619, 5627, 5652,
-    ]
-    .into_iter()
-    .map(GameId::from)
-    .collect();
+pub fn best_combination_single(data: &Data) -> FetchCombinationsResponse {
+    let team_id = data
+        .teams
+        .position(|t| *t == Team("Bayern München".to_smolstr()))
+        .unwrap();
 
-    find_best_combination(&game_ids, data)
+    fetch_combinations(data, |game| {
+        game.team_away_id == team_id || game.team_home_id == team_id
+    })
 }
 
 // Hatayspor, Deutschland, Bayern München and Real Madrid
-pub fn best_combination_multi_1(data: &Data) -> Combination {
-    let game_ids: Vec<GameId> = vec![
-        0, 13, 24, 37, 44, 51, 68, 75, 78, 88, 102, 112, 120, 124, 138, 145, 150, 160, 170, 185,
-        192, 195, 211, 213, 218, 224, 239, 250, 256, 260, 271, 283, 292, 301, 306, 319, 324, 336,
-        348, 355, 929, 940, 951, 964, 975, 986, 996, 998, 1008, 1019, 1031, 1044, 1054, 1061, 1074,
-        1080, 1089, 1101, 1107, 1125, 1135, 1143, 1152, 1160, 1174, 1178, 1196, 1204, 1216, 1218,
-        1231, 1240, 1252, 1263, 1268, 1284, 1293, 1299, 1738, 1747, 1761, 1772, 1782, 1793, 1799,
-        1816, 1825, 1828, 1840, 1853, 1858, 1868, 1884, 1889, 1907, 1916, 1921, 1932, 1938, 1948,
-        1958, 1969, 1978, 1995, 2000, 2011, 2021, 2033, 2046, 2049, 2064, 2074, 2081, 2094, 2104,
-        2110, 2127, 2623, 2626, 2628, 3672, 3687, 3692, 3697, 3708, 3716, 3731, 3734, 3750, 3753,
-        3761, 3771, 3783, 3789, 3803, 3807, 3816, 3826, 3834, 3841, 3850, 3859, 3868, 3878, 3892,
-        3896, 3908, 3915, 3924, 3933, 3940, 3951, 3960, 5052, 5058, 5072, 5081, 5089, 5101, 5112,
-        5120, 5131, 5141, 5152, 5161, 5168, 5182, 5190, 5197, 5202, 5213, 5223, 5229, 5243, 5252,
-        5260, 5272, 5283, 5291, 5302, 5312, 5323, 5332, 5339, 5353, 5361, 5368, 5373, 5384, 5405,
-        5466, 5501, 5505, 5506, 5531, 5534, 5545, 5551, 5563, 5568, 5579, 5590, 5594, 5619, 5621,
-        5627, 5638, 5652,
-    ]
-    .into_iter()
-    .map(GameId::from)
-    .collect();
+pub fn best_combination_multi_1(data: &Data) -> FetchCombinationsResponse {
+    // to make test more accurate, precalc team ids
+    let test_teams = ["Hatayspor", "Deutschland", "Bayern München", "Real Madrid"];
+    let team_ids: Vec<TeamId> = data
+        .teams
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| test_teams.contains(&t.0.as_str()))
+        .map(|(index, _)| TeamId::new(index))
+        .collect();
 
-    find_best_combination(&game_ids, data)
+    fetch_combinations(data, |game| {
+        team_ids.contains(&game.team_away_id) || team_ids.contains(&game.team_home_id)
+    })
 }
 
 // ALLE
-pub fn best_combination_all(data: &Data) -> Combination {
-    let game_ids: Vec<GameId> = data.games.iter().map(|g| g.id).collect();
-
-    find_best_combination(&game_ids, data)
+pub fn best_combination_all(data: &Data) -> FetchCombinationsResponse {
+    fetch_combinations(data, |_| true)
 }
 
 // Oxford United, Los Angeles FC, AS Rom
-pub fn best_combination_multi_2(data: &Data) -> Combination {
-    let game_ids: Vec<GameId> = vec![
-        793, 834, 856, 1311, 1319, 1328, 1344, 1356, 1366, 1373, 1385, 1390, 1403, 1413, 1425,
-        1433, 1444, 1454, 1464, 1476, 1486, 1496, 1504, 1508, 1523, 1533, 1536, 1553, 1564, 1570,
-        1586, 1596, 1606, 1610, 1624, 1636, 1645, 1655, 1665, 1675, 1684, 1723, 1726, 2130, 2144,
-        2166, 2180, 2195, 2199, 2218, 2226, 2250, 2267, 2273, 2294, 2305, 2323, 2349, 2361, 2374,
-        2388, 2406, 2419, 2435, 2444, 2461, 2474, 2491, 2493, 2516, 2537, 2549, 2558, 2567, 2590,
-        2602, 2619, 3968, 3984, 3991, 4001, 4015, 4024, 4034, 4045, 4049, 4065, 4069, 4085, 4093,
-        4104, 4115, 4119, 4134, 4143, 4154, 4157, 4176, 4185, 4195, 4206, 4215, 4224, 4235, 4239,
-        4253, 4264, 4275, 4283, 4295, 4301, 4315, 4317, 4336, 4344, 5498,
-    ]
-    .into_iter()
-    .map(GameId::from)
-    .collect();
+pub fn best_combination_multi_2(data: &Data) -> FetchCombinationsResponse {
+    // to make test more accurate, precalc team ids
+    let test_teams = ["Oxford United", "Los Angeles FC", "AS Rom"];
+    let team_ids: Vec<TeamId> = data
+        .teams
+        .iter()
+        .enumerate()
+        .filter(|(_, t)| test_teams.contains(&t.0.as_str()))
+        .map(|(index, _)| TeamId::new(index))
+        .collect();
 
-    find_best_combination(&game_ids, data)
+    fetch_combinations(data, |game| {
+        team_ids.contains(&game.team_away_id) || team_ids.contains(&game.team_home_id)
+    })
 }
