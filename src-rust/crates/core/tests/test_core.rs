@@ -1,4 +1,4 @@
-use best_combination_lib::*;
+use best_combination_core::*;
 
 #[test]
 fn test_best_combination_single() {

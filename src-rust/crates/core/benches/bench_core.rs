@@ -1,13 +1,10 @@
 use std::hint::black_box;
 
-use best_combination_data::Data;
-use best_combination_lib::{
-    best_combination_all, best_combination_multi_1, best_combination_multi_2,
-    best_combination_single, load_data,
-};
+use best_combination_core::data::Data;
+use best_combination_core::*;
 use tango_bench::*;
 
-fn best_combination_benchmarks() -> impl IntoBenchmarks {
+fn benchmarks() -> impl IntoBenchmarks {
     let data: &'static Data = Box::leak(Box::new(load_data()));
 
     [
@@ -26,5 +23,5 @@ fn best_combination_benchmarks() -> impl IntoBenchmarks {
     ]
 }
 
-tango_benchmarks!(best_combination_benchmarks());
+tango_benchmarks!(benchmarks());
 tango_main!();

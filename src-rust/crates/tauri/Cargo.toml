@@ -1,5 +1,5 @@
 [package]
-name = "best-combination"
+name = "best_combination"
 version = "0.1.0"
 description = "A Tauri App"
 authors = ["you"]
@@ -24,20 +24,6 @@ anyhow = "1.0.92"
 chrono = { version = "0.4.38", features = ["serde"] }
 fehler = "1.0.0"
 smol_str = { version = "0.3.2", features = ["serde"] }
-best-combination-data = { path = "../data" }
+best_combination_core = { path = "../core" }
 itertools = "0.13.0"
 index_vec = "0.1.4"
-rustc-hash = "2.1.0"
-smallbitset = "0.7.1"
-wide = "0.7.30"
-
-[dev-dependencies]
-insta = { version = "1.41.1", features = ["yaml"] }
-tango-bench = { version = "0.6" }
-
-[profile.dev.package]
-insta.opt-level = 3
-
-[[bench]]
-name = "best_combination_bench"
-harness = false
