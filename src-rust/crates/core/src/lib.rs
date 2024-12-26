@@ -1,5 +1,5 @@
 use algo::*;
-use arrayvec::ArrayVec;
+// use arrayvec::ArrayVec;
 use data::*;
 use num_traits::{PrimInt, Unsigned};
 use serde::Serialize;
@@ -98,6 +98,7 @@ pub fn fetch_combinations<F: Fn(&Game) -> bool>(
     let maps = collect_maps_from_games(&filtered_games);
 
     let best_combination = find_best_combination(&maps.total_maps, &data.packages);
+    // let best_combination = Combination {package_ids: vec![PackageId::new(29), PackageId::new(8), PackageId::new(15)]};
     let best_combination_properties = best_combination.calculate_properties(&maps, data);
 
     FetchCombinationsResponse {

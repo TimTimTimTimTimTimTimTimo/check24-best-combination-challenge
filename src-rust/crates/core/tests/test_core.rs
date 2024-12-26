@@ -8,12 +8,13 @@ fn test_best_combination_single() {
     orphan_count: 1
     best_combination:
       package_ids:
-        - 0
+        - 8
+        - 15
     best_combination_properties:
-      live_coverage: 77
+      live_coverage: 0
       high_coverage: 78
       total_coverage: 78
-      price: 6000
+      price: 699
     "###);
 }
 

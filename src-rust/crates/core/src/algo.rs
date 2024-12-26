@@ -72,6 +72,7 @@ pub fn find_best_combination(
                 // Check if adding the package makes the combination more expensive then the current best
                 let next_price = current_frame.current_price + package_prices[next_pack_id.index()];
                 if best_price <= next_price {
+                    // It can't be better therefore check the next packages on this frame
                     continue;
                 }
 
@@ -87,12 +88,15 @@ pub fn find_best_combination(
 
                 // Check if the new package adds coverage at all
                 if next_uncovered_games_map == current_frame.uncovered_games_map {
+                    // The packages in the frame are always sorted by coverage,
+                    // therefore the next packages will not add any coverage either, pop
                     search_stack.pop();
                     continue;
                 }
 
                 // Check if all games are covered
                 if next_uncovered_games_map.is_clear() {
+                    // Found new best solution
                     best_price = next_price;
                     best_pack_ids.clear();
                     best_pack_ids.extend(
@@ -103,7 +107,6 @@ pub fn find_best_combination(
                     );
                     best_pack_ids.push(next_pack_id);
 
-                    search_stack.pop();
                     continue;
                 }
 
