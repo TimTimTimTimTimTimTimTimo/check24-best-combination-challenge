@@ -5,3 +5,7 @@ resolver = "2"
 
 [profile.dev.package]
 insta.opt-level = 3
+
+[profile.release]
+debug = 1
+panic = "abort"

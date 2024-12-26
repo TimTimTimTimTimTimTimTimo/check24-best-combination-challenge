@@ -17,6 +17,10 @@ derive_more = { version = "1.0.0", features = ["full"] }
 index_vec = { version = "0.1.4", features = ["serde"] }
 argh = "0.1.13"
 wide = "0.7.30"
+arrayvec = "0.7.6"
+fixedbitset = "0.5.7"
+num-traits = "0.2.19"
+bitvec_simd = "0.20.5"
 
 [dev-dependencies]
 insta = { version = "1.41.1", features = ["yaml"] }

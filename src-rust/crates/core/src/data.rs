@@ -8,6 +8,8 @@ use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
 
+use crate::Bitmap;
+
 #[derive(Serialize, Deserialize)]
 pub struct Data {
     /// Unique teams sorted descending by number of apperances in the games dataset.
@@ -52,8 +54,9 @@ pub struct Package {
     pub id: PackageId,
     pub name: SmolStr,
     pub monthly_price_cents: Option<u32>,
-    pub monthly_price_yearly_subscription_in_cents: u32,
+    pub monthly_price_yearly_subscription_cents: u32,
 }
+
 index_vec::define_index_type! {
     pub struct PackageId = u8;
 }
@@ -141,7 +144,7 @@ impl Data {
               id: number;
               name: string;
               monthly_price_cents: number | null;
-              monthly_price_yearly_subscription_in_cents: number;
+              monthly_price_yearly_subscription_cents: number;
             }}
             "
         )?;
@@ -176,8 +179,8 @@ impl Data {
             .into_iter()
             .enumerate()
             .map(|(index, gt)| {
-                let mut live_map = 0;
-                let mut high_map = 0;
+                let mut live_map = 0u64;
+                let mut high_map = 0u64;
                 offer_tokens
                     .iter()
                     .filter(|ot| ot.game_id == gt.id)
@@ -186,8 +189,8 @@ impl Data {
                             .iter()
                             .position(|pt| pt.id == ot.streaming_package_id)
                             .unwrap();
-                        live_map.set_bit(mapped_package_index, ot.live);
-                        high_map.set_bit(mapped_package_index, ot.highlights);
+                        live_map.set_bit(mapped_package_index as u32, ot.live);
+                        high_map.set_bit(mapped_package_index as u32, ot.highlights);
                     });
 
                 Game {
@@ -221,7 +224,7 @@ impl Data {
                 id: PackageId::new(index),
                 name: pt.name,
                 monthly_price_cents: pt.monthly_price_cents,
-                monthly_price_yearly_subscription_in_cents: pt
+                monthly_price_yearly_subscription_cents: pt
                     .monthly_price_yearly_subscription_in_cents,
             })
             .collect();
@@ -283,34 +286,6 @@ impl Data {
     }
 }
 
-pub trait CoverageMap {
-    fn set_bit(&mut self, index: usize, value: bool);
-    fn set_bits(&mut self, indices: &[usize], value: bool);
-    fn get_bit(&self, index: usize) -> bool;
-}
-
-impl CoverageMap for u64 {
-    #[inline]
-    fn set_bit(&mut self, index: usize, value: bool) {
-        assert!(index < 64);
-        *self = (*self & !(1u64 << index)) | ((value as u64) << index);
-    }
-
-    #[inline]
-    fn set_bits(&mut self, indices: &[usize], value: bool) {
-        let mask = indices.iter().fold(0u64, |acc, &index| {
-            assert!(index < 64);
-            acc | (1u64 << index)
-        });
-        *self = (*self & !mask) | (if value { mask } else { 0 });
-    }
-
-    #[inline]
-    fn get_bit(&self, index: usize) -> bool {
-        assert!(index < 64);
-        (*self & (1u64 << index)) != 0
-    }
-}
 #[derive(Debug, Deserialize, Clone)]
 struct GameToken {
     id: u16,

@@ -1,7 +1,7 @@
-use std::ops::BitAnd;
-
 use algo::*;
+use arrayvec::ArrayVec;
 use data::*;
+use num_traits::{PrimInt, Unsigned};
 use serde::Serialize;
 use smol_str::ToSmolStr;
 
@@ -32,20 +32,20 @@ impl Combination {
 
         let mut package_map: u64 = 0;
         for p_id in &self.package_ids {
-            package_map.set_bit(p_id.index(), true);
+            package_map.set_bit(p_id.index() as u32, true);
         }
 
         let live_coverage = live_maps
             .iter()
-            .fold(0, |acc, map| acc + (map.bitand(package_map) != 0) as u16);
+            .fold(0, |acc, map| acc + ((map & package_map) != 0) as u16);
 
         let high_coverage = high_maps
             .iter()
-            .fold(0, |acc, map| acc + (map.bitand(package_map) != 0) as u16);
+            .fold(0, |acc, map| acc + ((map & package_map) != 0) as u16);
 
         let total_coverage = total_maps
             .iter()
-            .fold(0, |acc, map| acc + (map.bitand(package_map) != 0) as u16);
+            .fold(0, |acc, map| acc + ((map & package_map) != 0) as u16);
 
         assert!(live_coverage <= total_coverage);
         assert!(high_coverage <= total_coverage);
@@ -59,7 +59,7 @@ impl Combination {
         let price: u32 = self
             .package_ids
             .iter()
-            .map(|&p_id| data.packages[p_id].monthly_price_yearly_subscription_in_cents)
+            .map(|&p_id| data.packages[p_id].monthly_price_yearly_subscription_cents)
             .sum();
 
         CombinationProperties {
@@ -79,8 +79,7 @@ pub struct FetchCombinationsResponse {
     best_combination_properties: CombinationProperties,
 }
 
-/// Filters games and orphans based on the filter predicate and then passes the games maps
-/// to find_best_combination_greedy or find_best_combination_exhaustive, based on their number.
+/// Filters games based on the predicate and returns the optimal combination and its properties
 pub fn fetch_combinations<F: Fn(&Game) -> bool>(
     data: &Data,
     filter: F,
@@ -103,10 +102,9 @@ pub fn fetch_combinations<F: Fn(&Game) -> bool>(
         .count() as u16;
 
     let filtered_games: Vec<&Game> = data.games.iter().filter(|game| filter(game)).collect();
-
     let maps = collect_maps_from_games(&filtered_games);
 
-    let best_combination = find_best_combination_greedy(&maps, &data.packages.raw);
+    let best_combination = find_best_combination(&maps.total_maps, &data.packages);
     let best_combination_properties = best_combination.calculate_properties(&maps, data);
 
     FetchCombinationsResponse {
@@ -116,6 +114,49 @@ pub fn fetch_combinations<F: Fn(&Game) -> bool>(
         best_combination_properties,
     }
 }
+
+/// !!! BITS must equal the types size in bits !!!
+/// Until Rust stabilizes const expressions this is the best I can do :(
+// TODO: this might be sketchy. Testing would be great. If only time...
+trait Bitmap<const BITS: usize>: Unsigned + PrimInt {
+    #[inline]
+    fn set_bit(&mut self, index: u32, value: bool) {
+        debug_assert!(index < BITS as u32);
+        *self = *self & !(Self::one() << index as usize)
+            | (Self::from(value as u8).unwrap() << index as usize);
+    }
+
+    #[inline]
+    fn set_bits(&mut self, indices: &[u32], value: bool) {
+        let mask = indices.iter().fold(Self::zero(), |acc, &index| {
+            debug_assert!(index < BITS as u32);
+            acc | (Self::one() << index as usize)
+        });
+        *self = (*self & !mask) | (if value { mask } else { Self::zero() });
+    }
+
+    #[inline]
+    fn get_bit(&self, index: u32) -> bool {
+        assert!(index < BITS as u32);
+        !(*self & (Self::one() << index as usize)).is_zero()
+    }
+
+    #[inline]
+    fn get_bits(&self) -> ArrayVec<u32, BITS> {
+        // Got this from: https://www.reddit.com/r/rust/comments/r91ok5/comment/hn9ahxi/
+        let mut x = *self;
+        let mut result = ArrayVec::new();
+        while x != Self::zero() {
+            let index = x.trailing_zeros();
+            result.push(index);
+            x = x ^ (Self::one() << index as usize);
+        }
+
+        result
+    }
+}
+
+impl Bitmap<64> for u64 {}
 
 pub fn load_data() -> Data {
     let data_bin = include_bytes!("../data/best_combination.dat");

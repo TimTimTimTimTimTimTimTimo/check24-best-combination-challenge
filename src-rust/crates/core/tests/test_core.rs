@@ -25,13 +25,15 @@ fn test_best_combination_multi_1() {
     orphan_count: 3
     best_combination:
       package_ids:
-        - 0
+        - 8
         - 29
+        - 16
+        - 22
     best_combination_properties:
-      live_coverage: 205
-      high_coverage: 208
+      live_coverage: 122
+      high_coverage: 202
       total_coverage: 208
-      price: 6992
+      price: 2991
     "###);
 }
 
@@ -43,17 +45,18 @@ fn test_best_combination_all() {
     orphan_count: 3210
     best_combination:
       package_ids:
-        - 0
+        - 16
         - 29
+        - 13
+        - 1
         - 35
-        - 17
         - 24
-        - 21
+        - 5
     best_combination_properties:
-      live_coverage: 5228
-      high_coverage: 5661
+      live_coverage: 3417
+      high_coverage: 5659
       total_coverage: 5661
-      price: 8192
+      price: 6691
     "###);
 }
 
