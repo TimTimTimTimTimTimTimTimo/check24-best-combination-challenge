@@ -19,10 +19,7 @@ pub fn find_best_combination(
     game_masks: &IndexSlice<GameId, [u64]>,
     packs: &IndexSlice<PackageId, [Package]>,
 ) -> Combination {
-    // for mask in game_masks.iter() {
-    //     dbg!("Mask: {:064b}", mask);
-    // }
-
+    // Collect for faster indexing later
     let package_prices: ArrayVec<u32, 64> = packs
         .iter()
         .map(|p| p.monthly_price_yearly_subscription_cents)
@@ -62,7 +59,6 @@ pub fn find_best_combination(
         let current_frame = match search_stack.last_mut() {
             Some(frame) => frame,
             None => {
-                // println!("Search iterations: {iterations}");
                 break;
             }
         };
@@ -111,12 +107,14 @@ pub fn find_best_combination(
                     continue;
                 }
 
+                // Further exploration of current combination is warranted
                 uncovered_game_masks.clear();
                 uncovered_game_masks.extend(
                     next_uncovered_games_map
                         .ones()
                         .map(|index| game_masks[index]),
                 );
+
                 let mut next_sorted_uncovered_pack_ids =
                     current_frame.sorted_unused_pack_ids.clone();
 
@@ -131,14 +129,12 @@ pub fn find_best_combination(
                     );
                 }
 
-                let next = SearchFrame {
+                search_stack.push(SearchFrame {
                     uncovered_games_map: next_uncovered_games_map,
                     selected_pack_id: next_pack_id,
                     sorted_unused_pack_ids: next_sorted_uncovered_pack_ids,
                     current_price: next_price,
-                };
-
-                search_stack.push(next);
+                });
             }
         }
     }
@@ -159,6 +155,7 @@ fn sort_packages_by_coverage(
 
     let mut coverages: [u16; 64] = [0; 64];
 
+    // Calculate coverages
     for mask in game_masks {
         for (i, pack_id) in pack_ids.iter().enumerate() {
             coverages[i] += ((mask >> pack_id.index()) & 1) as u16;

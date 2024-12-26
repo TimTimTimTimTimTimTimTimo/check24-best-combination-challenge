@@ -89,15 +89,8 @@ pub fn fetch_combinations<F: Fn(&Game) -> bool>(
         .orphan_games
         .iter()
         .filter(|orphan_game| {
-            filter(&Game {
-                id: GameId::new(orphan_game.id.into()),
-                team_home_id: orphan_game.team_home_id,
-                team_away_id: orphan_game.team_away_id,
-                start_time: orphan_game.start_time,
-                tournament_id: orphan_game.tournament_id,
-                live_map: 0,
-                high_map: 0,
-            })
+            let game: Game = (*orphan_game).clone().into();
+            filter(&game)
         })
         .count() as u16;
 
@@ -126,14 +119,14 @@ trait Bitmap<const BITS: usize>: Unsigned + PrimInt {
             | (Self::from(value as u8).unwrap() << index as usize);
     }
 
-    #[inline]
-    fn set_bits(&mut self, indices: &[u32], value: bool) {
-        let mask = indices.iter().fold(Self::zero(), |acc, &index| {
-            debug_assert!(index < BITS as u32);
-            acc | (Self::one() << index as usize)
-        });
-        *self = (*self & !mask) | (if value { mask } else { Self::zero() });
-    }
+    // #[inline]
+    // fn set_bits(&mut self, indices: &[u32], value: bool) {
+    //     let mask = indices.iter().fold(Self::zero(), |acc, &index| {
+    //         debug_assert!(index < BITS as u32);
+    //         acc | (Self::one() << index as usize)
+    //     });
+    //     *self = (*self & !mask) | (if value { mask } else { Self::zero() });
+    // }
 
     #[inline]
     fn get_bit(&self, index: u32) -> bool {
@@ -141,19 +134,19 @@ trait Bitmap<const BITS: usize>: Unsigned + PrimInt {
         !(*self & (Self::one() << index as usize)).is_zero()
     }
 
-    #[inline]
-    fn get_bits(&self) -> ArrayVec<u32, BITS> {
-        // Got this from: https://www.reddit.com/r/rust/comments/r91ok5/comment/hn9ahxi/
-        let mut x = *self;
-        let mut result = ArrayVec::new();
-        while x != Self::zero() {
-            let index = x.trailing_zeros();
-            result.push(index);
-            x = x ^ (Self::one() << index as usize);
-        }
+    // #[inline]
+    // fn get_bits(&self) -> ArrayVec<u32, BITS> {
+    //     // Got this from: https://www.reddit.com/r/rust/comments/r91ok5/comment/hn9ahxi/
+    //     let mut x = *self;
+    //     let mut result = ArrayVec::new();
+    //     while x != Self::zero() {
+    //         let index = x.trailing_zeros();
+    //         result.push(index);
+    //         x = x ^ (Self::one() << index as usize);
+    //     }
 
-        result
-    }
+    //     result
+    // }
 }
 
 impl Bitmap<64> for u64 {}

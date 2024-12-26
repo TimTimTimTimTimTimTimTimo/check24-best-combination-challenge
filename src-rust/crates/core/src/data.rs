@@ -37,6 +37,20 @@ index_vec::define_index_type! {
     pub struct GameId = u16;
 }
 
+impl From<OrphanGame> for Game {
+    fn from(orphan_game: OrphanGame) -> Self {
+        Game {
+            id: GameId::new(orphan_game.id.index()),
+            team_home_id: orphan_game.team_home_id,
+            team_away_id: orphan_game.team_away_id,
+            start_time: orphan_game.start_time,
+            tournament_id: orphan_game.tournament_id,
+            live_map: 0,
+            high_map: 0,
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OrphanGame {
     pub id: OrphanGameId,
