@@ -20,9 +20,5 @@ tauri-build = { version = "2", features = [] }
 [dependencies]
 tauri = { version = "2", features = [] }
 anyhow = "1.0.92"
-chrono = { version = "0.4.38", features = ["serde"] }
 fehler = "1.0.0"
-smol_str = { version = "0.3.2", features = ["serde"] }
 best_combination_core = { path = "../core" }
-itertools = "0.13.0"
-index_vec = "0.1.4"

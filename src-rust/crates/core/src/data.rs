@@ -1,12 +1,12 @@
 use std::{collections::HashMap, fs::File, io::BufWriter, path::Path};
 
-use chrono::NaiveDateTime;
 use derive_more::derive::Display;
 use fehler::throws;
 use index_vec::{IndexSlice, IndexVec};
 use itertools::Itertools;
 use serde::{de::DeserializeOwned, Deserialize, Deserializer, Serialize};
 use smol_str::SmolStr;
+use time::{Date, PrimitiveDateTime};
 
 use crate::Bitmap;
 
@@ -24,12 +24,32 @@ pub struct Data {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct Game {
-    pub id: GameId,
+pub struct GameAttributes {
     pub team_home_id: TeamId,
     pub team_away_id: TeamId,
-    pub start_time: NaiveDateTime,
+    pub date: Date,
     pub tournament_id: TournamentId,
+}
+
+impl GameAttributes {
+    fn from_token(
+        token: &GameToken,
+        teams: &IndexSlice<TeamId, [Team]>,
+        tournaments: &IndexSlice<TournamentId, [Tournament]>,
+    ) -> Self {
+        GameAttributes {
+            team_home_id: Team(token.team_home.clone()).get_id(teams),
+            team_away_id: Team(token.team_away.clone()).get_id(teams),
+            date: token.starts_at.date(),
+            tournament_id: Tournament(token.tournament_name.clone()).get_id(tournaments),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct Game {
+    pub id: GameId,
+    pub attributes: GameAttributes,
     pub live_map: u64,
     pub high_map: u64,
 }
@@ -37,27 +57,10 @@ index_vec::define_index_type! {
     pub struct GameId = u16;
 }
 
-impl From<OrphanGame> for Game {
-    fn from(orphan_game: OrphanGame) -> Self {
-        Game {
-            id: GameId::new(orphan_game.id.index()),
-            team_home_id: orphan_game.team_home_id,
-            team_away_id: orphan_game.team_away_id,
-            start_time: orphan_game.start_time,
-            tournament_id: orphan_game.tournament_id,
-            live_map: 0,
-            high_map: 0,
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Clone)]
 pub struct OrphanGame {
     pub id: OrphanGameId,
-    pub team_home_id: TeamId,
-    pub team_away_id: TeamId,
-    pub start_time: NaiveDateTime,
-    pub tournament_id: TournamentId,
+    pub attributes: GameAttributes,
 }
 index_vec::define_index_type! {
     pub struct OrphanGameId = u16;
@@ -209,10 +212,7 @@ impl Data {
 
                 Game {
                     id: GameId::new(index),
-                    team_home_id: Team(gt.team_home).get_id(&teams),
-                    team_away_id: Team(gt.team_away).get_id(&teams),
-                    start_time: gt.starts_at,
-                    tournament_id: Tournament(gt.tournament_name).get_id(&tournaments),
+                    attributes: GameAttributes::from_token(&gt, &teams, &tournaments),
                     live_map,
                     high_map,
                 }
@@ -224,10 +224,7 @@ impl Data {
             .enumerate()
             .map(|(index, gt)| OrphanGame {
                 id: OrphanGameId::new(index),
-                team_home_id: Team(gt.team_home).get_id(&teams),
-                team_away_id: Team(gt.team_away).get_id(&teams),
-                start_time: gt.starts_at,
-                tournament_id: Tournament(gt.tournament_name).get_id(&tournaments),
+                attributes: GameAttributes::from_token(&gt, &teams, &tournaments),
             })
             .collect();
 
@@ -300,13 +297,19 @@ impl Data {
     }
 }
 
+time::serde::format_description!(
+    my_format,
+    PrimitiveDateTime,
+    "[year]-[month]-[day] [hour]:[minute]:[second]"
+);
+
 #[derive(Debug, Deserialize, Clone)]
 struct GameToken {
     id: u16,
     team_home: SmolStr,
     team_away: SmolStr,
-    #[serde(deserialize_with = "deserialize_naive_datetime")]
-    starts_at: NaiveDateTime,
+    #[serde(with = "my_format")]
+    starts_at: PrimitiveDateTime,
     tournament_name: SmolStr,
 }
 impl ParsableFromCSV for GameToken {}
@@ -340,13 +343,6 @@ trait ParsableFromCSV: DeserializeOwned {
             .deserialize::<Self>()
             .collect::<Result<Vec<Self>, _>>()?
     }
-}
-
-// TODO: find nicer place for this function, recover the error don't panic
-#[throws(D::Error)]
-fn deserialize_naive_datetime<'de, D: Deserializer<'de>>(deserializer: D) -> NaiveDateTime {
-    let str = String::deserialize(deserializer)?;
-    NaiveDateTime::parse_from_str(&str, "%Y-%m-%d %H:%M:%S%.f").expect("Datetime parsing failed.")
 }
 
 #[throws(D::Error)]

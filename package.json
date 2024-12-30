@@ -13,12 +13,13 @@
   },
   "license": "MIT",
   "dependencies": {
+    "@js-temporal/polyfill": "^0.4.4",
     "@tauri-apps/api": "^2.1.1",
     "@tauri-apps/plugin-cli": "^2.2.0"
   },
   "devDependencies": {
     "@sveltejs/adapter-static": "^3.0.8",
-    "@sveltejs/kit": "^2.15.0",
+    "@sveltejs/kit": "^2.15.1",
     "@sveltejs/vite-plugin-svelte": "^4.0.4",
     "@tauri-apps/cli": "^2.1.0",
     "autoprefixer": "^10.4.20",

@@ -1,24 +1,28 @@
 use arrayvec::ArrayVec;
 use fixedbitset::FixedBitSet;
-use index_vec::{IndexSlice, IndexVec};
-use itertools::Itertools;
+use index_vec::IndexSlice;
 
-use crate::{data::*, Bitmap, Combination};
+use crate::{data::*, Bitmap};
 
 #[derive(Debug)]
 struct SearchFrame {
     uncovered_games_map: FixedBitSet,
+    selected_pack_id: PackageId,
     /// First sorted by coverage ascending, then by price descending.
     /// Therefore the "best" element is always at the top of the stack.
-    selected_pack_id: PackageId,
     sorted_unused_pack_ids: ArrayVec<PackageId, 64>,
     current_price: u32,
 }
 
-pub fn find_best_combination(
-    game_masks: &IndexSlice<GameId, [u64]>,
+pub struct BestCombinations {
+    pub cheapest: Vec<PackageId>,
+    pub smallest: Option<Vec<PackageId>>,
+}
+
+pub fn find_best_combinations(
+    game_maps: &[u64],
     packs: &IndexSlice<PackageId, [Package]>,
-) -> Combination {
+) -> BestCombinations {
     // Collect for faster indexing later
     let package_prices: ArrayVec<u32, 64> = packs
         .iter()
@@ -26,7 +30,7 @@ pub fn find_best_combination(
         .collect();
 
     // Used for passing into sort_packages_by_coverage, reused on each iteration to avoid new allocations
-    let uncovered_game_masks = &mut game_masks.to_vec();
+    let uncovered_game_masks = &mut game_maps.to_vec();
     uncovered_game_masks.shrink_to_fit();
 
     // Allocate only 64, as its the max number of packages
@@ -35,7 +39,7 @@ pub fn find_best_combination(
     // Setup for iteration
     let first_frame = SearchFrame {
         uncovered_games_map: {
-            let mut tmp = FixedBitSet::with_capacity(game_masks.len());
+            let mut tmp = FixedBitSet::with_capacity(game_maps.len());
             tmp.set_range(.., true);
             tmp
         },
@@ -52,8 +56,12 @@ pub fn find_best_combination(
     };
     search_stack.push(first_frame);
 
-    let best_pack_ids: &mut ArrayVec<PackageId, 64> = &mut ArrayVec::new();
-    let mut best_price = package_prices.iter().sum();
+    let cheapest_combination_pack_ids: &mut ArrayVec<PackageId, 64> = &mut ArrayVec::new();
+    let mut cheapest_combination_price = u32::MAX;
+
+    let smallest_combination_pack_ids: &mut ArrayVec<PackageId, 64> = &mut ArrayVec::new();
+    smallest_combination_pack_ids.extend(packs.iter().map(|p| p.id));
+    let mut smallest_combinations_price = u32::MAX;
 
     for _ in 0usize..(1 << packs.len()) {
         let current_frame = match search_stack.last_mut() {
@@ -71,7 +79,7 @@ pub fn find_best_combination(
             Some(next_pack_id) => {
                 // Check if adding the package makes the combination more expensive then the current best
                 let next_price = current_frame.current_price + package_prices[next_pack_id.index()];
-                if best_price <= next_price {
+                if cheapest_combination_price <= next_price {
                     // It can't be better therefore check the next packages on this frame
                     continue;
                 }
@@ -79,7 +87,7 @@ pub fn find_best_combination(
                 // Calculate map with new package added
                 let mut next_uncovered_games_map = current_frame.uncovered_games_map.clone();
                 for game_index in current_frame.uncovered_games_map.ones() {
-                    let game_mask = game_masks[game_index];
+                    let game_mask = game_maps[game_index];
                     let is_covered = game_mask.get_bit(next_pack_id.index() as u32);
                     if is_covered {
                         next_uncovered_games_map.set(game_index, false);
@@ -97,15 +105,26 @@ pub fn find_best_combination(
                 // Check if all games are covered
                 if next_uncovered_games_map.is_clear() {
                     // Found new best solution
-                    best_price = next_price;
-                    best_pack_ids.clear();
-                    best_pack_ids.extend(
+                    cheapest_combination_price = next_price;
+                    cheapest_combination_pack_ids.clear();
+                    cheapest_combination_pack_ids.extend(
                         search_stack
                             .iter()
                             .skip(1)
                             .map(|frame| frame.selected_pack_id),
                     );
-                    best_pack_ids.push(next_pack_id);
+                    cheapest_combination_pack_ids.push(next_pack_id);
+
+                    // Check if smaller solution was found
+                    if cheapest_combination_pack_ids.len() <= smallest_combination_pack_ids.len()
+                        && cheapest_combination_price < smallest_combinations_price
+                    {
+                        smallest_combinations_price = cheapest_combination_price;
+                        smallest_combination_pack_ids.clear();
+                        smallest_combination_pack_ids
+                            .try_extend_from_slice(cheapest_combination_pack_ids)
+                            .unwrap();
+                    }
 
                     continue;
                 }
@@ -115,7 +134,7 @@ pub fn find_best_combination(
                 uncovered_game_masks.extend(
                     next_uncovered_games_map
                         .ones()
-                        .map(|index| game_masks[index]),
+                        .map(|index| game_maps[index]),
                 );
 
                 let mut next_sorted_uncovered_pack_ids =
@@ -142,16 +161,18 @@ pub fn find_best_combination(
         }
     }
 
-    Combination {
-        package_ids: best_pack_ids.to_vec(),
+    BestCombinations {
+        cheapest: cheapest_combination_pack_ids.to_vec(),
+        smallest: if cheapest_combination_pack_ids != smallest_combination_pack_ids {
+            Some(smallest_combination_pack_ids.to_vec())
+        } else {
+            None
+        },
     }
 }
 
 /// Calculates the pack_ids coverage using the game_masks, and then sorts the ids by coverage ascending.
-fn sort_packages_by_coverage(
-    game_masks: &IndexSlice<GameId, [u64]>,
-    pack_ids: &mut ArrayVec<PackageId, 64>,
-) {
+fn sort_packages_by_coverage(game_maps: &[u64], pack_ids: &mut ArrayVec<PackageId, 64>) {
     // Sorting one or no elements makes no sense, hitting this indicates a logic error
     debug_assert!(2 <= pack_ids.len());
     debug_assert!(pack_ids.len() <= 64);
@@ -159,7 +180,7 @@ fn sort_packages_by_coverage(
     let mut coverages: [u16; 64] = [0; 64];
 
     // Calculate coverages
-    for mask in game_masks {
+    for mask in game_maps {
         for (i, pack_id) in pack_ids.iter().enumerate() {
             coverages[i] += ((mask >> pack_id.index()) & 1) as u16;
         }
@@ -176,32 +197,5 @@ fn sort_packages_by_coverage(
     }
 
     debug_assert!(coverages.len() >= pack_ids.len());
-    debug_assert!(*coverages.iter().max().unwrap() <= game_masks.len() as u16);
-}
-
-pub struct MapsFromGames {
-    pub live_maps: IndexVec<GameId, u64>,
-    pub high_maps: IndexVec<GameId, u64>,
-    pub total_maps: IndexVec<GameId, u64>,
-}
-
-/// Collects all live and highlight maps. Also generates total maps for the given games.
-pub fn collect_maps_from_games(games: &[&Game]) -> MapsFromGames {
-    debug_assert!(games.iter().map(|g| g.id).all_unique());
-
-    let mut live_maps: IndexVec<GameId, u64> = IndexVec::with_capacity(games.len());
-    let mut high_maps: IndexVec<GameId, u64> = IndexVec::with_capacity(games.len());
-    let mut total_maps: IndexVec<GameId, u64> = IndexVec::with_capacity(games.len());
-    for game in games {
-        live_maps.push(game.live_map);
-        high_maps.push(game.high_map);
-        total_maps.push(game.live_map | game.high_map);
-    }
-
-    assert!(live_maps.len() == high_maps.len() && high_maps.len() == total_maps.len());
-    MapsFromGames {
-        live_maps,
-        high_maps,
-        total_maps,
-    }
+    debug_assert!(*coverages.iter().max().unwrap() <= game_maps.len() as u16);
 }

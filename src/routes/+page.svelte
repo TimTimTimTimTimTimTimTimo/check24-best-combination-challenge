@@ -16,32 +16,39 @@
         type Package,
         teams,
         type Team,
+        tournaments,
     } from "$lib/generated_types";
     import type {
         Combination,
-        CombinationProperties,
+        CombinationsResult,
+        CombinationsQuery,
         Game,
         Offer,
     } from "$lib/types";
     import { fade } from "svelte/transition";
+    import { Temporal } from "@js-temporal/polyfill";
 
     let selectedTeamIds: Set<number> = $state(new SvelteSet());
 
-    type FetchCombinationsResponse = {
-        game_count: number;
-        orphan_count: number;
-        best_combination: Combination;
-        best_combination_properties: CombinationProperties;
-    };
-
-    let combiResponse: FetchCombinationsResponse | null = $state(null);
+    let combiResult: CombinationsResult | null = $state(null);
     let combiLoading = $state(false);
 
-    async function fetchCombinationsByTeams() {
+    async function fetchCombinations() {
         combiLoading = true;
-        combiResponse = await invoke("fetch_combinations_by_teams", {
+
+        let query: CombinationsQuery = {
             team_ids: Array.from(selectedTeamIds),
-        });
+            tournament_ids: Array.from(
+                { length: tournaments.length },
+                (_, i) => i,
+            ),
+            timespan: {
+                start: Temporal.PlainDate.from("1970-01-01"),
+                end: Temporal.PlainDate.from("2050-12-31"),
+            },
+            offer_type: "Some",
+        };
+        combiResult = await invoke("fetch_combinations_handler", { query });
         combiLoading = false;
     }
 
@@ -110,7 +117,7 @@
                                         selectedTeamIds.add(
                                             teams.findIndex((t) => t === team),
                                         );
-                                        fetchCombinationsByTeams();
+                                        fetchCombinations();
                                         teamCloseAndFocusTrigger();
                                     }}
                                 >
@@ -128,33 +135,54 @@
                 <Button
                     onclick={() => {
                         selectedTeamIds.delete(id);
-                        fetchCombinationsByTeams();
+                        fetchCombinations();
                     }}>{teams[id]} <X /></Button
                 >
             {/each}
         </div>
     </form>
     <br />
-    {#if combiResponse}
-        {@const {
-            game_count,
-            orphan_count,
-            best_combination,
-            best_combination_properties,
-        } = combiResponse}
-        <div class="contents" in:fade>
-            <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
-                <Carousel.Content>
+    <div class="contents" in:fade>
+        <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
+            <Carousel.Content>
+                {#if combiResult}
+                    {@const {
+                        game_count,
+                        orphan_count,
+                        cheapest_combination,
+                        smallest_combination,
+                        single_combinations,
+                    } = combiResult}
                     {@render CombinationCard(
-                        best_combination.package_ids.length > 1
+                        cheapest_combination.package_ids.length > 1
                             ? "Beste Kombination!"
                             : "Bestes Paket!",
                         game_count,
                         orphan_count,
-                        best_combination,
-                        best_combination_properties,
+                        cheapest_combination,
                     )}
-                    <!-- {#each single_combinations as combi, i (i)}
+                    {#if smallest_combination}
+                        {@render CombinationCard(
+                            smallest_combination.package_ids.length > 1
+                                ? "Kleinste Kombination!"
+                                : "Kleinstes Paket!",
+                            game_count,
+                            orphan_count,
+                            smallest_combination,
+                        )}
+                    {/if}
+                    {#each single_combinations as single}
+                        {@render CombinationCard(
+                            "",
+                            game_count,
+                            orphan_count,
+                            single,
+                        )}
+                    {/each}
+                {:else}
+                    <div>Keine Teams ausgewählt.</div>
+                {/if}
+                <!-- {#each single_combinations as combi, i (i)}
                         {@render CombinationCard(
                             i.toString(),
                             game_count,
@@ -162,14 +190,11 @@
                             combi,
                         )}
                     {/each} -->
-                </Carousel.Content>
-                <Carousel.Previous />
-                <Carousel.Next />
-            </Carousel.Root>
-        </div>
-    {:else}
-        <div>Keine Teams ausgewählt.</div>
-    {/if}
+            </Carousel.Content>
+            <Carousel.Previous />
+            <Carousel.Next />
+        </Carousel.Root>
+    </div>
 </main>
 
 {#snippet CombinationCard(
@@ -177,7 +202,6 @@
     game_count: number,
     orphan_count: number,
     combi: Combination,
-    combi_properties: CombinationProperties,
 )}
     <Carousel.Item class="md:basis-1/3 lg:basis-1/6">
         <Card.Root class="hover:shadow">
@@ -202,15 +226,18 @@
                 {/if}
                 <div>Von {game_count} streambaren Spielen:</div>
                 <div>
-                    {combi_properties.total_coverage} Gesamt
+                    {combi.coverages.some_coverage} Gesamt
                 </div>
-                <div>{combi_properties.live_coverage} Live</div>
+                <div>{combi.coverages.live_coverage} Live</div>
                 <div>
-                    {combi_properties.high_coverage} Highlights
+                    {combi.coverages.high_coverage} Highlights
+                </div>
+                <div>
+                    {combi.coverages.full_coverage} Beides
                 </div>
                 <Separator class="my-4" />
                 <div>
-                    {(combi_properties.price * 12) / 100}€ pro Jahr
+                    {(combi.price * 12) / 100}€ pro Jahr
                 </div>
             </Card.Content>
         </Card.Root>

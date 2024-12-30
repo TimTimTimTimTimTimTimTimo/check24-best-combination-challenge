@@ -1,3 +1,4 @@
+import type { Temporal } from "@js-temporal/polyfill";
 import type { Team, Tournament } from "./generated_types";
 
 export type Game = {
@@ -22,13 +23,32 @@ export type Package = {
   monthly_price_yearly_subscription_in_cents: number;
 };
 
-export type Combination = {
-  package_ids: number[];
+export type Coverages = {
+  high_coverage: number;
+  live_coverage: number;
+  some_coverage: number;
+  full_coverage: number;
 };
 
-export type CombinationProperties = {
-  live_coverage: number;
-  high_coverage: number;
-  total_coverage: number;
+export type CombinationsResult = {
+  game_count: number;
+  orphan_count: number;
+  cheapest_combination: Combination;
+  smallest_combination?: Combination;
+  single_combinations: Combination[];
+};
+
+export type CombinationsQuery = {
+  team_ids: number[];
+  tournament_ids: number[];
+  timespan: { start: Temporal.PlainDate; end: Temporal.PlainDate };
+  offer_type: OfferType;
+};
+
+export type OfferType = "High" | "Live" | "Some" | "Full";
+
+export type Combination = {
+  package_ids: number[];
+  coverages: Coverages;
   price: number;
 };
