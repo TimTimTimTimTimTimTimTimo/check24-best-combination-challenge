@@ -80,13 +80,13 @@ impl Combination {
 
 #[derive(Deserialize, PartialEq)]
 enum CoverType {
-    /// Game can be watched via highlights.
+    /// Games can be watched via highlights.
     High,
-    /// Game can be watched live.
+    /// Games can be watched live.
     Live,
-    /// Game can be watched.
+    /// Games can be watched.
     Some,
-    /// Game can be watched live AND via highlights.
+    /// Games can be watched live AND via highlights.
     Full,
 }
 
