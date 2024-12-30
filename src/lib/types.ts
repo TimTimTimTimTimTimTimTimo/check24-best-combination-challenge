@@ -42,10 +42,10 @@ export type CombinationsQuery = {
   team_ids: number[];
   tournament_ids: number[];
   timespan: { start: Temporal.PlainDate; end: Temporal.PlainDate };
-  offer_type: OfferType;
+  cover_type: CoverType;
 };
 
-export type OfferType = "High" | "Live" | "Some" | "Full";
+export type CoverType = "High" | "Live" | "Some" | "Full";
 
 export type Combination = {
   package_ids: number[];

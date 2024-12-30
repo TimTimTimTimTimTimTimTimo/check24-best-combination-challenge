@@ -46,7 +46,7 @@
                 start: Temporal.PlainDate.from("1970-01-01"),
                 end: Temporal.PlainDate.from("2050-12-31"),
             },
-            offer_type: "Some",
+            cover_type: "Some",
         };
         combiResult = await invoke("fetch_combinations_handler", { query });
         combiLoading = false;
