@@ -182,14 +182,6 @@
                 {:else}
                     <div>Keine Teams ausgewählt.</div>
                 {/if}
-                <!-- {#each single_combinations as combi, i (i)}
-                        {@render CombinationCard(
-                            i.toString(),
-                            game_count,
-                            orphan_count,
-                            combi,
-                        )}
-                    {/each} -->
             </Carousel.Content>
             <Carousel.Previous />
             <Carousel.Next />

@@ -24,6 +24,30 @@ pub struct Data {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct Game {
+    pub id: GameId,
+    pub attributes: GameAttributes,
+    /// Bitmap, where the index of each set bit indicates that the game can be watched live
+    /// using the package whose id is equal to the index.
+    pub live_map: u64,
+    /// Bitmap, where the index of each set bit indicates that the game can be watched via highlights
+    /// using the package whose id is equal to the index.
+    pub high_map: u64,
+}
+index_vec::define_index_type! {
+    pub struct GameId = u16;
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OrphanGame {
+    pub id: OrphanGameId,
+    pub attributes: GameAttributes,
+}
+index_vec::define_index_type! {
+    pub struct OrphanGameId = u16;
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GameAttributes {
     pub team_home_id: TeamId,
     pub team_away_id: TeamId,
@@ -44,26 +68,6 @@ impl GameAttributes {
             tournament_id: Tournament(token.tournament_name.clone()).get_id(tournaments),
         }
     }
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct Game {
-    pub id: GameId,
-    pub attributes: GameAttributes,
-    pub live_map: u64,
-    pub high_map: u64,
-}
-index_vec::define_index_type! {
-    pub struct GameId = u16;
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct OrphanGame {
-    pub id: OrphanGameId,
-    pub attributes: GameAttributes,
-}
-index_vec::define_index_type! {
-    pub struct OrphanGameId = u16;
 }
 
 #[derive(Debug, Serialize, Deserialize, Clone)]

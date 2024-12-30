@@ -15,10 +15,13 @@ struct SearchFrame {
 }
 
 pub struct BestCombinations {
+    /// PackageIds which cover all games at the lowest price.
     pub cheapest: Vec<PackageId>,
+    /// Smallest number of PackageIds which cover all games at the lowest price.
     pub smallest: Option<Vec<PackageId>>,
 }
 
+/// For the given maps, finds the best combinations to cover them all.
 pub fn find_best_combinations(
     game_maps: &[u64],
     packs: &IndexSlice<PackageId, [Package]>,
@@ -151,6 +154,7 @@ pub fn find_best_combinations(
                     );
                 }
 
+                // Setup for deeper exploration of the current combination
                 search_stack.push(SearchFrame {
                     uncovered_games_map: next_uncovered_games_map,
                     selected_pack_id: next_pack_id,

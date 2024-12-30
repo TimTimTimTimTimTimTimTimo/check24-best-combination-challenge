@@ -16,15 +16,7 @@ pub mod data;
 struct Combination {
     pub package_ids: Vec<PackageId>,
     pub coverages: Coverages,
-    pub price: u32,
-}
-
-#[derive(Serialize, Default)]
-struct Coverages {
-    pub high_coverage: u16,
-    pub live_coverage: u16,
-    pub some_coverage: u16,
-    pub full_coverage: u16,
+    pub yearly_price_per_month_cents: u32,
 }
 
 impl Combination {
@@ -67,6 +59,7 @@ impl Combination {
         }
     }
 
+    /// Creates a Combination and calculates its properties.
     fn create(
         packages: &IndexSlice<PackageId, [&Package]>,
         games: &IndexSlice<GameId, [&Game]>,
@@ -77,7 +70,7 @@ impl Combination {
         Self {
             package_ids,
             coverages,
-            price: packages
+            yearly_price_per_month_cents: packages
                 .iter()
                 .map(|p| p.monthly_price_yearly_subscription_cents)
                 .sum(),
@@ -85,22 +78,50 @@ impl Combination {
     }
 }
 
+#[derive(Deserialize, PartialEq)]
+enum CoverType {
+    /// Game can be watched via highlights.
+    High,
+    /// Game can be watched live.
+    Live,
+    /// Game can be watched.
+    Some,
+    /// Game can be watched live AND via highlights.
+    Full,
+}
+
+#[derive(Serialize, Default)]
+struct Coverages {
+    pub high_coverage: u16,
+    pub live_coverage: u16,
+    pub some_coverage: u16,
+    pub full_coverage: u16,
+}
+
 #[derive(Serialize)]
 pub struct CombinationsResult {
+    /// Number of games with streaming offers.
     game_count: u16,
+    /// Number of games without streaming offers.
     orphan_count: u16,
+    /// Cheapest combination which covers all games.
     cheapest_combination: Combination,
-    /// None if cheapest_combination is also the smallest
+    /// Smallest combination which covers all games. None if cheapest_combination is also the smallest.
     smallest_combination: Option<Combination>,
+    /// All packages as single combinations.
     single_combinations: Vec<Combination>,
 }
 
 #[derive(Deserialize)]
 pub struct CombinationsQuery {
+    /// Teams whose games need to be covered.
     team_ids: Vec<TeamId>,
+    /// Tournaments the Teams participate in, whose games need to be covered.
     tournament_ids: Vec<TournamentId>,
+    /// Timespan in which the games happen.
     timespan: RangeInclusive<Date>,
-    offer_type: OfferType,
+    /// Type of coverage required.
+    cover_type: CoverType,
 }
 
 impl CombinationsQuery {
@@ -110,14 +131,6 @@ impl CombinationsQuery {
             && self.tournament_ids.contains(&attributes.tournament_id)
             && self.timespan.contains(&attributes.date)
     }
-}
-
-#[derive(Deserialize, PartialEq)]
-enum OfferType {
-    High,
-    Live,
-    Some,
-    Full,
 }
 
 /// Filters games and based on the query and returns the optimal combination and its properties
@@ -135,16 +148,16 @@ pub fn fetch_combinations(data: &Data, query: CombinationsQuery) -> Combinations
         .count() as u16;
 
     let mut maps_count = filtered_games.len();
-    if query.offer_type == OfferType::Full {
+    if query.cover_type == CoverType::Full {
         maps_count *= 2
     }
     let mut maps = Vec::with_capacity(maps_count);
     for g in &filtered_games {
-        match query.offer_type {
-            OfferType::High => maps.push(g.high_map),
-            OfferType::Live => maps.push(g.live_map),
-            OfferType::Some => maps.push(g.high_map | g.live_map),
-            OfferType::Full => {
+        match query.cover_type {
+            CoverType::High => maps.push(g.high_map),
+            CoverType::Live => maps.push(g.live_map),
+            CoverType::Some => maps.push(g.high_map | g.live_map),
+            CoverType::Full => {
                 maps.push(g.high_map);
                 maps.push(g.live_map);
             }
@@ -192,34 +205,11 @@ trait Bitmap<const BITS: usize>: Unsigned + PrimInt {
             | (Self::from(value as u8).unwrap() << index as usize);
     }
 
-    // #[inline]
-    // fn set_bits(&mut self, indices: &[u32], value: bool) {
-    //     let mask = indices.iter().fold(Self::zero(), |acc, &index| {
-    //         debug_assert!(index < BITS as u32);
-    //         acc | (Self::one() << index as usize)
-    //     });
-    //     *self = (*self & !mask) | (if value { mask } else { Self::zero() });
-    // }
-
     #[inline]
     fn get_bit(&self, index: u32) -> bool {
         assert!(index < BITS as u32);
         !(*self & (Self::one() << index as usize)).is_zero()
     }
-
-    // #[inline]
-    // fn get_bits(&self) -> ArrayVec<u32, BITS> {
-    //     // Got this from: https://www.reddit.com/r/rust/comments/r91ok5/comment/hn9ahxi/
-    //     let mut x = *self;
-    //     let mut result = ArrayVec::new();
-    //     while x != Self::zero() {
-    //         let index = x.trailing_zeros();
-    //         result.push(index);
-    //         x = x ^ (Self::one() << index as usize);
-    //     }
-
-    //     result
-    // }
 }
 
 impl Bitmap<64> for u64 {}
@@ -229,9 +219,8 @@ pub fn load_data() -> Data {
     Data::load_from_bin(data_bin).unwrap()
 }
 
-// This is just used for testing and benchmarks. Should probably be in another file/module?
-
-// Bayern München
+// This is just used for testing and benchmarks.
+/// Tests Bayern München.
 pub fn best_combination_single(data: &Data) -> CombinationsResult {
     let team_id = data
         .teams
@@ -245,12 +234,12 @@ pub fn best_combination_single(data: &Data) -> CombinationsResult {
             team_ids: vec![team_id],
             tournament_ids,
             timespan: Date::MIN..=Date::MAX,
-            offer_type: OfferType::Some,
+            cover_type: CoverType::Some,
         },
     )
 }
 
-// Hatayspor, Deutschland, Bayern München and Real Madrid
+/// Tests Hatayspor, Deutschland, Bayern München and Real Madrid.
 pub fn best_combination_multi_1(data: &Data) -> CombinationsResult {
     // to make test more accurate, precalc team ids
     let test_teams = ["Hatayspor", "Deutschland", "Bayern München", "Real Madrid"];
@@ -270,12 +259,12 @@ pub fn best_combination_multi_1(data: &Data) -> CombinationsResult {
             team_ids,
             tournament_ids,
             timespan: Date::MIN..=Date::MAX,
-            offer_type: OfferType::Some,
+            cover_type: CoverType::Some,
         },
     )
 }
 
-// ALLE
+/// Tests ALL Games.
 pub fn best_combination_all(data: &Data) -> CombinationsResult {
     let team_ids = (0..data.teams.len()).map(TeamId::new).collect();
     let tournament_ids = (0..data.tournaments.len()).map(TournamentId::new).collect();
@@ -285,12 +274,12 @@ pub fn best_combination_all(data: &Data) -> CombinationsResult {
             team_ids,
             tournament_ids,
             timespan: Date::MIN..=Date::MAX,
-            offer_type: OfferType::Some,
+            cover_type: CoverType::Some,
         },
     )
 }
 
-// Oxford United, Los Angeles FC, AS Rom
+/// Tests Oxford United, Los Angeles FC, AS Rom.
 pub fn best_combination_multi_2(data: &Data) -> CombinationsResult {
     // to make test more accurate, precalc team ids
     let test_teams = ["Oxford United", "Los Angeles FC", "AS Rom"];
@@ -309,7 +298,7 @@ pub fn best_combination_multi_2(data: &Data) -> CombinationsResult {
             team_ids,
             tournament_ids,
             timespan: Date::MIN..=Date::MAX,
-            offer_type: OfferType::Some,
+            cover_type: CoverType::Some,
         },
     )
 }
