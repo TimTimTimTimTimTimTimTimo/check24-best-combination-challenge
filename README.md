@@ -29,6 +29,8 @@ Make sure you have the following installed:
     pnpm tauri build
     ```
 
+If there are difficulties while trying to get the application running, feel free to reach out to me!
+
 ## Optimizations
 
 ### 1. Data Preprocessing  
