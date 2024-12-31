@@ -28,7 +28,8 @@
     } from "$lib/types";
     import Sun from "lucide-svelte/icons/sun";
     import Moon from "lucide-svelte/icons/moon";
-
+    import { Toaster } from "$lib/components/ui/sonner/index.js";
+    import { toast } from "svelte-sonner";
     let selectedGames: Game[] = $state(games);
     let selectedOrphanGames: OrphanGame[] = $state(orphan_games);
     let selectedTeamIds: Set<number> = $state(new SvelteSet());
@@ -93,6 +94,7 @@
         };
         combiResult = await invoke("fetch_combinations_handler", { query });
         const end = performance.now();
+        toast.success(`Beste Kombinationen gefunden in ${end - start} ms!`);
         console.log(`Query and calculations done in: ${end - start} ms`);
     }
 
@@ -107,6 +109,7 @@
 
 <main class="p-10">
     <ModeWatcher />
+    <Toaster />
     <Carousel.Root class="mx-5" opts={{ slidesToScroll: "auto" }}>
         <Carousel.Content>
             <Carousel.Item class="md:basis-full lg:basis-2/5">

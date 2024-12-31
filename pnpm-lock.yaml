@@ -17,9 +17,6 @@ importers:
       '@tauri-apps/plugin-cli':
         specifier: ^2.2.0
         version: 2.2.0
-      mode-watcher:
-        specifier: ^0.5.0
-        version: 0.5.0(svelte@5.16.0)
       svelte-virtuallists:
         specifier: ^1.4.0
         version: 1.4.0(clsx@2.1.1)(svelte@5.16.0)
@@ -57,9 +54,15 @@ importers:
       lucide-svelte:
         specifier: ^0.454.0
         version: 0.454.0(svelte@5.16.0)
+      mode-watcher:
+        specifier: ^0.5.0
+        version: 0.5.0(svelte@5.16.0)
       svelte:
         specifier: ^5.16.0
         version: 5.16.0
+      svelte-sonner:
+        specifier: ^0.3.28
+        version: 0.3.28(svelte@5.16.0)
       tailwind-merge:
         specifier: ^2.6.0
         version: 2.6.0
@@ -1008,6 +1011,11 @@ packages:
     resolution: {integrity: sha512-ot0WnXS9fgdkgIcePe6RHNk1WA8+muPa6cSjeR3V8K27q9BB1rTE3R1p7Hv0z1ZyAc8s6Vvv8DIyWf681MAt0w==}
     engines: {node: '>= 0.4'}
 
+  svelte-sonner@0.3.28:
+    resolution: {integrity: sha512-K3AmlySeFifF/cKgsYNv5uXqMVNln0NBAacOYgmkQStLa/UoU0LhfAACU6Gr+YYC8bOCHdVmFNoKuDbMEsppJg==}
+    peerDependencies:
+      svelte: ^3.0.0 || ^4.0.0 || ^5.0.0-next.1
+
   svelte-toolbelt@0.7.0:
     resolution: {integrity: sha512-i/Tv4NwAWWqJnK5H0F8y/ubDnogDYlwwyzKhrspTUFzrFuGnYshqd2g4/R43ds841wmaFiSW/HsdsdWhPOlrAA==}
     engines: {node: '>=18', pnpm: '>=8.7.0'}
@@ -1950,6 +1958,10 @@ snapshots:
       ts-interface-checker: 0.1.13
 
   supports-preserve-symlinks-flag@1.0.0: {}
+
+  svelte-sonner@0.3.28(svelte@5.16.0):
+    dependencies:
+      svelte: 5.16.0
 
   svelte-toolbelt@0.7.0(svelte@5.16.0):
     dependencies:
