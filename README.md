@@ -61,6 +61,24 @@ Several optimizations enhance algorithm efficiency:
 
 These improvements make the algorithm highly efficient and capable of handling complex combinations in real time. The source code is thoroughly documented, and I am especially proud of how clear and optimized it turned out. I strongly encourage exploring it for further insights.
 
+## Possible Future Optimizations  
+
+### 1. Precalculating/Caching  
+One obvious optimization would be to implement precalculation and caching for popular queries. Frequently used queries could be precalculated and stored in a cache, which could then evict entries on an LRU (Least Recently Used) basis.  
+A more advanced approach might involve using the results of previous queries to guide the algorithm for new ones. If a previous solution covers a subset of the current games, we could skip parts of the algorithm or leverage that partial result to speed up the process.  
+
+### 2. Enhancing the Algorithm  
+There are definitely parts of the algorithm that could be optimized further:  
+- **SIMD (Single Instruction, Multiple Data):** Using SIMD could speed up coverage calculations. I experimented with this approach, but the results didn’t lead to performance improvements. However, I believe it could be beneficial with further tuning.  
+- **Alternative Data Structures:** Replacing the `uncovered_games_map` with a simple vector of game IDs could be an interesting tradeoff. This might simplify parts of the algorithm and could potentially open the door to SIMD optimizations for coverage calculations.  
+
+### 3. Switching the Algorithm  
+Another possibility is to replace the custom algorithm with a **linear programming (LP)** approach. The problem could be modeled as an LP problem and solved using a dedicated solver library.  
+I opted not to pursue this route, as I felt it was less interesting and believed that a custom solution like mine could perform just as well, if not better. In fact, a comparison with a similar implementation by a friend for this challenge suggests that my approach is on par with LP-based solutions in terms of performance.  
+
+### Conclusion  
+While the current implementation is optimized for performance, there is always room for further improvement. Future optimizations could focus on caching, algorithmic enhancements, or even exploring alternative approaches like linear programming. Regardless, the current solution is efficient and performs well, and the experience of building and fine-tuning this system has been valuable for learning and improvement.
+
 ## Application Structure and Tech Stack  
 
 For this project, I decided to build a desktop application. The calculations are lightweight enough to run on-device, and it gave me an opportunity to try out **Tauri**.  
