@@ -1,21 +1,6 @@
 import type { Temporal } from "@js-temporal/polyfill";
 import type { Team, Tournament } from "./generated_types";
 
-export type Game = {
-  id: number;
-  team_home: Team;
-  team_away: Team;
-  starts_at: Date;
-  tournament: Tournament;
-};
-
-export type Offer = {
-  game_id: number;
-  package_id: number;
-  live: boolean;
-  highlights: boolean;
-};
-
 export type Package = {
   id: number;
   name: string;
@@ -31,17 +16,13 @@ export type Coverages = {
 };
 
 export type CombinationsResult = {
-  game_count: number;
-  orphan_count: number;
   cheapest_combination: Combination;
   smallest_combination?: Combination;
   single_combinations: Combination[];
 };
 
 export type CombinationsQuery = {
-  team_ids: number[];
-  tournament_ids: number[];
-  timespan: { start: Temporal.PlainDate; end: Temporal.PlainDate };
+  game_ids: number[];
   cover_type: CoverType;
 };
 

@@ -122,14 +122,14 @@ impl Data {
         bincode::serialize_into(file, &self)?;
     }
 
-    /// Write a Typescript file which contains string literal enums for teams and tournaments, and all packages.
+    /// Write a Typescript file which contains string literal enums for teams and tournaments
+    /// and all packages and games
     #[throws(anyhow::Error)]
     pub fn generate_ts_types(&self, path: &Path) {
         use std::io::Write;
 
         let file = File::create(path)?;
         let mut writer = BufWriter::new(file);
-
         writeln!(
             writer,
             "
@@ -178,6 +178,60 @@ impl Data {
                 .map(|package| serde_json::to_string(&package).unwrap())
                 .join(",")
         )?;
+
+        writeln!(
+            writer,
+            "
+            export type GameAttributes = {{
+              team_home_id: number;
+              team_away_id: number;
+              date: string;
+              tournament_id: number;
+            }}
+            "
+        )?;
+
+        writeln!(
+            writer,
+            "
+            export type Game = {{
+              id: number;
+              attributes: GameAttributes;
+              live_map: number;
+              high_map: number;
+            }}
+            "
+        )?;
+
+        writeln!(
+            writer,
+            "
+            export type OrphanGame = {{
+              id: number;
+              attributes: GameAttributes;
+            }}
+            "
+        )?;
+
+        writeln!(
+            writer,
+            "export const games: Game[] = [{}];",
+            self.games
+                .iter()
+                .map(|game| serde_json::to_string(&game).unwrap())
+                .join(",")
+        )?;
+
+        writeln!(
+            writer,
+            "export const orphan_games: OrphanGame[] = [{}];",
+            self.orphan_games
+                .iter()
+                .map(|orphan_game| serde_json::to_string(&orphan_game).unwrap())
+                .join(",")
+        )?;
+
+        writer.flush()?;
     }
 
     /// Parse the data from the given paths, then process them into a denser format more suitable for calculating combinations.

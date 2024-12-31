@@ -1,5 +1,3 @@
-use std::ops::RangeInclusive;
-
 use algo::*;
 use data::*;
 use index_vec::{IndexSlice, IndexVec};
@@ -7,7 +5,6 @@ use itertools::Itertools;
 use num_traits::{PrimInt, Unsigned};
 use serde::{Deserialize, Serialize};
 use smol_str::ToSmolStr;
-use time::Date;
 
 mod algo;
 pub mod data;
@@ -100,10 +97,6 @@ struct Coverages {
 
 #[derive(Serialize)]
 pub struct CombinationsResult {
-    /// Number of games with streaming offers.
-    game_count: u16,
-    /// Number of games without streaming offers.
-    orphan_count: u16,
     /// Cheapest combination which covers all games.
     cheapest_combination: Combination,
     /// Smallest combination which covers all games. None if cheapest_combination is also the smallest.
@@ -114,45 +107,26 @@ pub struct CombinationsResult {
 
 #[derive(Deserialize)]
 pub struct CombinationsQuery {
-    /// Teams whose games need to be covered.
-    team_ids: Vec<TeamId>,
-    /// Tournaments the Teams participate in, whose games need to be covered.
-    tournament_ids: Vec<TournamentId>,
-    /// Timespan in which the games happen.
-    timespan: RangeInclusive<Date>,
+    /// GameIds for which the best combinations should be found.
+    game_ids: Vec<GameId>,
     /// Type of coverage required.
     cover_type: CoverType,
 }
 
-impl CombinationsQuery {
-    fn contains_game(&self, attributes: &GameAttributes) -> bool {
-        (self.team_ids.contains(&attributes.team_home_id)
-            || self.team_ids.contains(&attributes.team_away_id))
-            && self.tournament_ids.contains(&attributes.tournament_id)
-            && self.timespan.contains(&attributes.date)
-    }
-}
-
 /// Filters games and based on the query and returns the optimal combination and its properties
 pub fn fetch_combinations(data: &Data, query: CombinationsQuery) -> CombinationsResult {
-    let filtered_games: IndexVec<GameId, &Game> = data
-        .games
+    let games: IndexVec<GameId, &Game> = query
+        .game_ids
         .iter()
-        .filter(|g| query.contains_game(&g.attributes))
+        .map(|g_id| &data.games[*g_id])
         .collect();
 
-    let orphan_count = data
-        .orphan_games
-        .iter()
-        .filter(|og| query.contains_game(&og.attributes))
-        .count() as u16;
-
-    let mut maps_count = filtered_games.len();
+    let mut maps_count = games.len();
     if query.cover_type == CoverType::Full {
         maps_count *= 2
     }
     let mut maps = Vec::with_capacity(maps_count);
-    for g in &filtered_games {
+    for g in &games {
         match query.cover_type {
             CoverType::High => maps.push(g.high_map),
             CoverType::Live => maps.push(g.live_map),
@@ -171,24 +145,22 @@ pub fn fetch_combinations(data: &Data, query: CombinationsQuery) -> Combinations
             .iter()
             .map(|p_id| &data.packages[*p_id])
             .collect();
-        Combination::create(&cheapest_combination_packages, &filtered_games)
+        Combination::create(&cheapest_combination_packages, &games)
     };
 
     let smallest_combination = best_combinations.smallest.map(|p_ids| {
         let smallest_combination_packages: IndexVec<PackageId, &Package> =
             p_ids.iter().map(|p_id| &data.packages[*p_id]).collect();
-        Combination::create(&smallest_combination_packages, &filtered_games)
+        Combination::create(&smallest_combination_packages, &games)
     });
 
     let single_combinations = data
         .packages
         .iter()
-        .map(|p| Combination::create(IndexSlice::from_slice(&[p]), &filtered_games))
+        .map(|p| Combination::create(IndexSlice::from_slice(&[p]), &games))
         .collect();
 
     CombinationsResult {
-        game_count: filtered_games.len() as u16,
-        orphan_count,
         cheapest_combination,
         smallest_combination,
         single_combinations,
@@ -227,13 +199,17 @@ pub fn best_combination_single(data: &Data) -> CombinationsResult {
         .position(|t| *t == Team("Bayern München".to_smolstr()))
         .unwrap();
 
-    let tournament_ids = (0..data.tournaments.len()).map(TournamentId::new).collect();
+    let game_ids: Vec<GameId> = data
+        .games
+        .iter()
+        .filter(|g| [g.attributes.team_away_id, g.attributes.team_home_id].contains(&team_id))
+        .map(|g| g.id)
+        .collect();
+
     fetch_combinations(
         data,
         CombinationsQuery {
-            team_ids: vec![team_id],
-            tournament_ids,
-            timespan: Date::MIN..=Date::MAX,
+            game_ids,
             cover_type: CoverType::Some,
         },
     )
@@ -241,7 +217,6 @@ pub fn best_combination_single(data: &Data) -> CombinationsResult {
 
 /// Tests Hatayspor, Deutschland, Bayern München and Real Madrid.
 pub fn best_combination_multi_1(data: &Data) -> CombinationsResult {
-    // to make test more accurate, precalc team ids
     let test_teams = ["Hatayspor", "Deutschland", "Bayern München", "Real Madrid"];
     let team_ids: Vec<TeamId> = data
         .teams
@@ -251,14 +226,21 @@ pub fn best_combination_multi_1(data: &Data) -> CombinationsResult {
         .map(|(index, _)| TeamId::new(index))
         .collect();
 
-    let tournament_ids = (0..data.tournaments.len()).map(TournamentId::new).collect();
+    let game_ids: Vec<GameId> = data
+        .games
+        .iter()
+        .filter(|g| {
+            [g.attributes.team_away_id, g.attributes.team_home_id]
+                .iter()
+                .any(|team_id| team_ids.contains(team_id))
+        })
+        .map(|g| g.id)
+        .collect();
 
     fetch_combinations(
         data,
         CombinationsQuery {
-            team_ids,
-            tournament_ids,
-            timespan: Date::MIN..=Date::MAX,
+            game_ids,
             cover_type: CoverType::Some,
         },
     )
@@ -266,14 +248,11 @@ pub fn best_combination_multi_1(data: &Data) -> CombinationsResult {
 
 /// Tests ALL Games.
 pub fn best_combination_all(data: &Data) -> CombinationsResult {
-    let team_ids = (0..data.teams.len()).map(TeamId::new).collect();
-    let tournament_ids = (0..data.tournaments.len()).map(TournamentId::new).collect();
+    let game_ids = (0..data.games.len()).map(GameId::new).collect();
     fetch_combinations(
         data,
         CombinationsQuery {
-            team_ids,
-            tournament_ids,
-            timespan: Date::MIN..=Date::MAX,
+            game_ids,
             cover_type: CoverType::Some,
         },
     )
@@ -281,7 +260,6 @@ pub fn best_combination_all(data: &Data) -> CombinationsResult {
 
 /// Tests Oxford United, Los Angeles FC, AS Rom.
 pub fn best_combination_multi_2(data: &Data) -> CombinationsResult {
-    // to make test more accurate, precalc team ids
     let test_teams = ["Oxford United", "Los Angeles FC", "AS Rom"];
     let team_ids: Vec<TeamId> = data
         .teams
@@ -291,13 +269,21 @@ pub fn best_combination_multi_2(data: &Data) -> CombinationsResult {
         .map(|(index, _)| TeamId::new(index))
         .collect();
 
-    let tournament_ids = (0..data.tournaments.len()).map(TournamentId::new).collect();
+    let game_ids: Vec<GameId> = data
+        .games
+        .iter()
+        .filter(|g| {
+            [g.attributes.team_away_id, g.attributes.team_home_id]
+                .iter()
+                .any(|team_id| team_ids.contains(team_id))
+        })
+        .map(|g| g.id)
+        .collect();
+
     fetch_combinations(
         data,
         CombinationsQuery {
-            team_ids,
-            tournament_ids,
-            timespan: Date::MIN..=Date::MAX,
+            game_ids,
             cover_type: CoverType::Some,
         },
     )
