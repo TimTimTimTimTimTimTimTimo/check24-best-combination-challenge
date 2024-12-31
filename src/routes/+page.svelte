@@ -1,12 +1,11 @@
 <script lang="ts">
     import * as Command from "$lib/components/ui/command/index.js";
     import * as Popover from "$lib/components/ui/popover/index.js";
-    import { Button } from "$lib/components/ui/button/index.js";
+    import { Button, buttonVariants } from "$lib/components/ui/button/index.js";
     import * as Card from "$lib/components/ui/card/index.js";
     import * as Carousel from "$lib/components/ui/carousel/index.js";
-    import { Separator } from "$lib/components/ui/separator/index.js";
-    import { tick } from "svelte";
-    import X from "lucide-svelte/icons/x";
+    import { Root, Separator } from "$lib/components/ui/separator/index.js";
+    import * as Tooltip from "$lib/components/ui/tooltip/index.js";
 
     import { SvelteSet } from "svelte/reactivity";
 
@@ -27,17 +26,22 @@
     } from "$lib/types";
     import { fade } from "svelte/transition";
     import { Temporal } from "@js-temporal/polyfill";
+    import { ModeWatcher, toggleMode } from "mode-watcher";
+    import X from "lucide-svelte/icons/x";
 
-    let selectedTeamIds: Set<number> = $state(new SvelteSet());
+    let selectedTeams: Set<Team> = $state(new SvelteSet());
 
     let combiResult: CombinationsResult | null = $state(null);
     let combiLoading = $state(false);
 
     async function fetchCombinations() {
         combiLoading = true;
+        const start = performance.now();
 
-        let query: CombinationsQuery = {
-            team_ids: Array.from(selectedTeamIds),
+        const query: CombinationsQuery = {
+            team_ids: Array.from(selectedTeams).map((team) =>
+                teams.findIndex((t) => t === team),
+            ),
             tournament_ids: Array.from(
                 { length: tournaments.length },
                 (_, i) => i,
@@ -49,6 +53,9 @@
             cover_type: "Some",
         };
         combiResult = await invoke("fetch_combinations_handler", { query });
+        const end = performance.now();
+        console.log(`Query and calculations done in: ${end - start} ms`);
+
         combiLoading = false;
     }
 
@@ -63,62 +70,76 @@
     let teamSelectInput = $state("");
     let selectableTeams = $derived.by(() => {
         if (teamSelectInput.length == 0) {
-            return teams.slice(0, 100);
+            return teams
+                .filter((team) => !selectedTeams.has(team))
+                .slice(0, 100);
         }
 
-        let matching = teams.filter((team) =>
-            team.toLowerCase().includes(teamSelectInput.toLowerCase()),
+        let matching = teams.filter(
+            (team) =>
+                !selectedTeams.has(team) &&
+                team.toLowerCase().includes(teamSelectInput.toLowerCase()),
         );
 
         return matching.slice(0, 12);
     });
-
-    let teamSelectOpen = $state(false);
-    let teamTriggerRef: HTMLButtonElement = $state(null!);
-    function teamCloseAndFocusTrigger() {
-        teamSelectInput = "";
-        teamSelectOpen = false;
-        tick().then(() => {
-            teamTriggerRef.focus();
-        });
-    }
 </script>
 
+<ModeWatcher />
+
 <main class="p-10">
-    <form>
-        <label for="teams">Gewählte Teams: </label>
-        <Popover.Root bind:open={teamSelectOpen}>
-            <Popover.Trigger bind:ref={teamTriggerRef}>
-                {#snippet child({ props })}
-                    <Button
-                        variant="outline"
-                        class="w-[200px] justify-between"
-                        {...props}
-                        role="combobox"
-                        aria-expanded={teamSelectOpen}
-                    >
-                        Team hinzufügen
-                    </Button>
-                {/snippet}
-            </Popover.Trigger>
-            <Popover.Content class="w-[200px] p-0">
-                <Command.Root shouldFilter={false}>
+    <form class="flex">
+        <Card.Root>
+            <Card.Header class="flex flex-row">
+                <Card.Title class="flex-grow">Teams</Card.Title>
+                <Button
+                    variant="outline"
+                    class="mx-1"
+                    onclick={() => {
+                        selectedTeams = new Set();
+                        fetchCombinations();
+                    }}>Alle abwählen</Button
+                >
+                <Button
+                    variant="secondary"
+                    class="mx-1"
+                    onclick={() => {
+                        selectedTeams = new Set(teams);
+                        fetchCombinations();
+                    }}>Alle auswählen</Button
+                >
+            </Card.Header>
+
+            <Card.Content class="flex flex-row h-80">
+                <Command.Root class="w-48" shouldFilter={false}>
                     <Command.Input
                         bind:value={teamSelectInput}
                         placeholder="Team suchen..."
                     />
-                    <Command.List>
+                    <Command.List class="h-56">
                         <Command.Empty>Kein Team gefunden.</Command.Empty>
+                        {#if teamSelectInput.length === 0}
+                            <Command.Group heading="Populäre Teams"
+                            ></Command.Group>
+                            {#each selectableTeams as team}
+                                <Command.Item
+                                    value={team}
+                                    onSelect={() => {
+                                        selectedTeams.add(team);
+                                        fetchCombinations();
+                                    }}
+                                >
+                                    {team}
+                                </Command.Item>
+                            {/each}
+                        {/if}
                         <Command.Group>
                             {#each selectableTeams as team}
                                 <Command.Item
                                     value={team}
                                     onSelect={() => {
-                                        selectedTeamIds.add(
-                                            teams.findIndex((t) => t === team),
-                                        );
+                                        selectedTeams.add(team);
                                         fetchCombinations();
-                                        teamCloseAndFocusTrigger();
                                     }}
                                 >
                                     {team}
@@ -127,24 +148,35 @@
                         </Command.Group>
                     </Command.List>
                 </Command.Root>
-            </Popover.Content>
-        </Popover.Root>
-        <div class="h-2"></div>
-        <div id="teams" class="flex-row space-x-1">
-            {#each selectedTeamIds as id (id)}
-                <Button
-                    onclick={() => {
-                        selectedTeamIds.delete(id);
-                        fetchCombinations();
-                    }}>{teams[id]} <X /></Button
-                >
-            {/each}
-        </div>
+                <Separator orientation="vertical" class="mx-5" />
+                <div class="flex flex-col w-72">
+                    <h3 class="mb-2">
+                        {selectedTeams.size} gewählte{selectedTeams.size === 1
+                            ? "s"
+                            : ""} Teams
+                    </h3>
+                    <ul class="overflow-y-scroll">
+                        {#each selectedTeams as team}
+                            <li>
+                                <Button
+                                    variant="secondary"
+                                    class="my-1 max-w-72"
+                                    onclick={() => selectedTeams.delete(team)}
+                                >
+                                    {team}
+                                </Button>
+                            </li>
+                        {/each}
+                    </ul>
+                </div></Card.Content
+            >
+        </Card.Root>
+        <Button onclick={toggleMode}>Nachtmodus an/aus</Button>
     </form>
     <br />
     <div class="contents" in:fade>
-        <Carousel.Root class="mx-10" opts={{ slidesToScroll: "auto" }}>
-            <Carousel.Content>
+        <Carousel.Root class="mx-10 px-2" opts={{ slidesToScroll: "auto" }}>
+            <Carousel.Content class="mx-2">
                 {#if combiResult}
                     {@const {
                         game_count,
@@ -195,8 +227,8 @@
     orphan_count: number,
     combi: Combination,
 )}
-    <Carousel.Item class="md:basis-1/3 lg:basis-1/6">
-        <Card.Root class="hover:shadow">
+    <Carousel.Item class="md:basis-1/3 lg:basis-1/6 py-4">
+        <Card.Root class="hover:shadow hover:scale-[1.01] transition-transform">
             <Card.Header class="h-32">
                 <Card.Title
                     class="flex justify-center items-center text-center h-14"
@@ -229,7 +261,8 @@
                 </div>
                 <Separator class="my-4" />
                 <div>
-                    {(combi.price * 12) / 100}€ pro Jahr
+                    {combi.yearly_price_per_month_cents / 100}€ pro Monat im
+                    Jahresabo
                 </div>
             </Card.Content>
         </Card.Root>

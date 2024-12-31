@@ -50,5 +50,5 @@ export type CoverType = "High" | "Live" | "Some" | "Full";
 export type Combination = {
   package_ids: number[];
   coverages: Coverages;
-  price: number;
+  yearly_price_per_month_cents: number;
 };
