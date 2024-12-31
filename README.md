@@ -60,3 +60,29 @@ Several optimizations enhance algorithm efficiency:
 4. Optimized branch pruning to minimize unnecessary checks.  
 
 These improvements make the algorithm highly efficient and capable of handling complex combinations in real time. The source code is thoroughly documented, and I am especially proud of how clear and optimized it turned out. I strongly encourage exploring it for further insights.
+
+## Application Structure and Tech Stack  
+
+For this project, I decided to build a desktop application. The calculations are lightweight enough to run on-device, and it gave me an opportunity to try out **Tauri**.  
+
+### Why Tauri?  
+Tauri is a framework for building desktop applications using a Rust backend and a web-based frontend. It produces lightweight applications with a small footprint, and its structure enforces a separation between the backend and frontend.  
+
+### Backend  
+The backend is entirely written in **Rust** and divided into several modules:  
+- **`data.rs`:** Handles data parsing, processing, and serialization into a binary format.  
+- **`algo.rs`:** Implements the algorithm for finding the best combination of packages.  
+- **`lib.rs`:** Contains shared utilities and defines the API accessed by the frontend.  
+
+I chose not to use a dedicated database to have more control over data structures and memory layout, allowing for better optimization and performance tuning.  
+
+### Frontend  
+The frontend uses a modern web stack:  
+- **Svelte + SvelteKit:** For building the UI and application logic.  
+- **ShadCN UI Framework:** Provides reusable UI components.  
+- **TailwindCSS:** Simplifies styling with utility-first classes.  
+
+I didn’t have much prior experience with these tools, and they were chosen somewhat arbitrarily. That said, they worked well for this project, and I didn’t encounter significant issues during development.  
+
+### Summary  
+The application structure, using Rust for the backend and modern web tools for the frontend, is modular and fits well within the Tauri framework. While there are trade-offs with this stack, it served the needs of the project effectively.  
