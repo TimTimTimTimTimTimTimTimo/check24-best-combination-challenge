@@ -436,7 +436,7 @@
                 >
                     {name}
                 </Card.Title>
-                <div class="h-14">
+                <div>
                     {getPackagesForCombi(combi)
                         .map((p) => p.name)
                         .join(" + ")}
