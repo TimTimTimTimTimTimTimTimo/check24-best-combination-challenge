@@ -430,7 +430,7 @@
 )}
     <Carousel.Item class="md:basis-1/3 lg:basis-1/6 py-1">
         <Card.Root class="hover:shadow hover:scale-[1.01] transition-transform">
-            <Card.Header class="h-32">
+            <Card.Header>
                 <Card.Title
                     class="flex justify-center items-center text-center h-14"
                 >
