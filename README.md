@@ -41,7 +41,7 @@ To improve performance, data is preprocessed by converting it from CSV into an e
 This reduces runtime overhead and ensures efficient data access.  
 
 ### 2. Optimizing Offers with Bitmaps  
-Previously, offers were stored as a large list (~32000 entries), which was slow and consumed 224 kB of memory. Now, each game uses two bitmaps ("Live" and "Highlights") to represent offers.  
+Previously, offers were stored as a large list (~3200 entries), which was slow and consumed 224 kB of memory. Now, each game uses two bitmaps ("Live" and "Highlights") to represent offers.  
 - **Memory Reduced:** Down to ~45 kB.  
 - **Faster Queries:** Offers can now be accessed and compared with simple bitmap operations.  
 - **Algorithm Simplification:** The optimization streamlined the selection process.  
@@ -66,20 +66,18 @@ These improvements make the algorithm highly efficient and capable of handling c
 ## Possible Future Optimizations  
 
 ### 1. Precalculating/Caching  
-One obvious optimization would be to implement precalculation and caching for popular queries. Frequently used queries could be precalculated and stored in a cache, which could then evict entries on an LRU (Least Recently Used) basis.  
-A more advanced approach might involve using the results of previous queries to guide the algorithm for new ones. If a previous solution covers a subset of the current games, we could skip parts of the algorithm or leverage that partial result to speed up the process.  
+Popular queries could be precalculated and cached, with an LRU eviction strategy. Advanced caching could reuse results from previous queries that cover subsets of the current games to skip parts of the algorithm or guide execution.  
 
 ### 2. Enhancing the Algorithm  
-There are definitely parts of the algorithm that could be optimized further:  
-- **SIMD (Single Instruction, Multiple Data):** Using SIMD could speed up coverage calculations. I experimented with this approach, but the results didn’t lead to performance improvements. However, I believe it could be beneficial with further tuning.  
-- **Alternative Data Structures:** Replacing the `uncovered_games_map` with a simple vector of game IDs could be an interesting tradeoff. This might simplify parts of the algorithm and could potentially open the door to SIMD optimizations for coverage calculations.  
+Parts of the algorithm could be further optimized:  
+- **SIMD:** SIMD could speed up coverage calculations, though initial attempts showed no improvements.  
+- **Simpler Data Structures:** Replacing `uncovered_games_map` with a vector of game IDs could simplify logic and enable SIMD optimizations.  
 
 ### 3. Switching the Algorithm  
-Another possibility is to replace the custom algorithm with a **linear programming (LP)** approach. The problem could be modeled as an LP problem and solved using a dedicated solver library.  
-I opted not to pursue this route, as I felt it was less interesting and believed that a custom solution like mine could perform just as well, if not better. In fact, a comparison with a similar implementation by a friend for this challenge suggests that my approach is on par with LP-based solutions in terms of performance.  
+The problem could be solved using linear programming (LP) and dedicated solvers. While I chose a custom solution for its flexibility and learning opportunities, comparisons suggest its performance is on par with LP-based approaches.  
 
 ### Conclusion  
-While the current implementation is optimized for performance, there is always room for further improvement. Future optimizations could focus on caching, algorithmic enhancements, or even exploring alternative approaches like linear programming. Regardless, the current solution is efficient and performs well, and the experience of building and fine-tuning this system has been valuable for learning and improvement.
+The current implementation performs well, but caching, algorithm refinements, or LP solvers could unlock further improvements. These options provide a solid foundation for future work.  
 
 ## Application Structure and Tech Stack  
 
