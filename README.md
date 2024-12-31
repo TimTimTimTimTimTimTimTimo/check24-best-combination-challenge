@@ -82,7 +82,7 @@ The frontend uses a modern web stack:
 - **ShadCN UI Framework:** Provides reusable UI components.  
 - **TailwindCSS:** Simplifies styling with utility-first classes.  
 
-I didn’t have much prior experience with these tools, and they were chosen somewhat arbitrarily. That said, they worked well for this project, and I didn’t encounter significant issues during development.  
+I didn’t have much prior experience with these tools, and they were chosen somewhat arbitrarily. That said, they worked well for this project, and I didn’t encounter significant issues during development. My frontend code is pretty nasty though.
 
 ### Summary  
 The application structure, using Rust for the backend and modern web tools for the frontend, is modular and fits well within the Tauri framework. While there are trade-offs with this stack, it served the needs of the project effectively.  
