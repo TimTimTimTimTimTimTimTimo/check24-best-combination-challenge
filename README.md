@@ -31,51 +31,32 @@ Make sure you have the following installed:
 
 ## Optimizations
 
-### 1. Data Preprocessing and Precomputation  
-To eliminate parsing and conversion overhead, data is parsed from CSV files, processed, and serialized into an efficient binary format using `bincode`. During this step:  
-- The data is reshaped for quick querying by indexing directly into vectors based on their IDs.  
-- Relevant TypeScript types are generated for seamless integration with the frontend.
+### 1. Data Preprocessing  
+To improve performance, data is preprocessed by converting it from CSV into an efficient binary format (`bincode`).  
+- The data is reorganized for fast lookups using indexes.  
+- TypeScript types are generated for seamless integration with the frontend.  
 
-This approach minimizes runtime processing overhead and ensures fast, efficient data access in the backend.
+This reduces runtime overhead and ensures efficient data access.  
 
-### 2. Eliminating Offers aka. I ❤️ Bitmaps!  
-Previously, the relationship between games and packages relied on traversing a large set of offers (approximately 3200 entries). This approach had:  
-- A significant memory footprint (~224 kB).  
-- Poor query performance for common operations.
+### 2. Optimizing Offers with Bitmaps  
+Previously, offers were stored as a large list (~3200 entries), which was slow and consumed 224 kB of memory. Now, each game uses two bitmaps ("Live" and "Highlights") to represent offers.  
+- **Memory Reduced:** Down to ~45 kB.  
+- **Faster Queries:** Offers can now be accessed and compared with simple bitmap operations.  
+- **Algorithm Simplification:** The optimization streamlined the selection process.  
 
-**Optimization:** Each game's offers are now represented using two bitmap fields (one for "Live" and one for "Highlights"). Each bit in the bitmap corresponds to a package ID:  
-- **Memory Efficiency:** Reduced to ~45 kB by using compact 64-bit integers.  
-- **Query Speed:** Accessing all offers for a game is now as simple as reading the bitmap.  
-- **Algorithm Simplification:** The best combination selection algorithm is now straightforward and efficient.
-
-**Results:**  
-Preliminary benchmarks using sample datasets show up to **327x faster performance** for finding the best combination. Without this optimization, achieving acceptable response times would not have been feasible.
+**Results:** Benchmarks show up to **327x faster performance** in finding the best combination.  
 
 ### 3. The Algorithm  
-The core algorithm used to determine the best combination of packages is a **Depth-First Search (DFS) with Branch Pruning**. It is conceptually simple but highly optimized in implementation. Here's an overview:  
+The algorithm is a **Depth-First Search (DFS)** with branch pruning:  
+- It traverses possible package combinations, maintaining the best one found so far.  
+- Branches that cannot provide a better solution are skipped early.  
+- The bitmap structure enables quick calculations and comparisons of coverage.  
 
-- **Traversal:**  
-  The algorithm systematically explores all possible package combinations using DFS. During traversal, it keeps track of the **best combination** found so far that covers all required games.  
+#### Micro-Optimizations  
+Several optimizations enhance algorithm efficiency:  
+1. Preallocated memory to avoid runtime allocation overhead.  
+2. In-place computations to reduce temporary object creation.  
+3. Compact bitmaps for fast bitwise operations.  
+4. Optimized branch pruning to minimize unnecessary checks.  
 
-- **Branch Pruning:**  
-  If a combination cannot provide a better solution than the current best, the algorithm immediately skips further exploration of that branch.  
-
-- **Bitmap Efficiency:**  
-  The game bitmaps are key to this process, enabling fast computation and comparison of game coverages for packages or combinations. This eliminates the need for slower, iterative checks.  
-
-#### Micro-Optimizations in the Algorithm  
-To achieve maximum performance, several low-level optimizations have been implemented:  
-1. **Preallocation:**  
-   - All necessary memory is preallocated before the algorithm starts, eliminating runtime allocation overhead.  
-2. **In-Place Computations:**  
-   - Wherever possible, operations are performed directly in memory without creating temporary objects or structures.  
-3. **Compact Representations:**  
-   - Data structures, such as the bitmaps, are designed to minimize memory usage while enabling efficient bitwise operations.  
-4. **Branch Skipping Logic:**  
-   - Conditions for branch pruning are carefully optimized to minimize unnecessary comparisons and checks.  
-
-#### Why It Matters  
-These optimizations significantly enhance the algorithm's speed and scalability. Preliminary benchmarks demonstrate exceptional performance improvements, making it feasible to handle complex combinations in real-time.  
-
-#### Source Code  
-The source code for the algorithm is meticulously documented, with detailed comments explaining each step and optimization. I encourage you to review it if you're interested in the implementation or wish to adapt the algorithm for similar problems. This part of the project represents a substantial effort, and I am especially proud of its clarity and efficiency.
+These improvements make the algorithm highly efficient and capable of handling complex combinations in real time. The source code is thoroughly documented, and I am especially proud of how clear and optimized it turned out. I strongly encourage exploring it for further insights.
