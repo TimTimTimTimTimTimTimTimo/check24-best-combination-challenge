@@ -2,7 +2,7 @@
 
 This repository contains my submission for the Check24 GenDev challenge.
 
-## Getting Started
+## How to run locally
 
 ### Prerequisites
 
