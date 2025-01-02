@@ -41,7 +41,7 @@ To improve performance, data is preprocessed by converting it from CSV into an e
 This reduces runtime overhead and ensures efficient data access.  
 
 ### 2. Optimizing Offers with Bitmaps  
-Previously, offers were stored as a large list (~3200 entries), which was slow and consumed 224 kB of memory. Now, each game uses two bitmaps ("Live" and "Highlights") to represent offers.  
+Previously, offers were stored as a large list (~32000 entries), which was slow and consumed 224 kB of memory. Now, each game uses two bitmaps ("Live" and "Highlights") to represent offers.  
 - **Memory Reduced:** Down to ~45 kB.  
 - **Faster Queries:** Offers can now be accessed and compared with simple bitmap operations.  
 - **Algorithm Simplification:** The optimization streamlined the selection process.  
