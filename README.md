@@ -1,6 +1,6 @@
 # Check24 Best Combination Challenge
 
-This repository contains my submission for the Check24 GenDev challenge.
+This repository contains my submission for the 6th Check24 GenDev challenge.
 
 ## How to run locally
 
